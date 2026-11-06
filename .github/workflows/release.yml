@@ -1,0 +1,25 @@
+name: release
+# Tag `v<version>` (matching plugin.json) to build the package and attach it to a GitHub release:
+# the exact URL listed in the catalog entry (catalog-entry.json).
+on:
+  push:
+    tags: ["v*"]
+permissions: { contents: write }
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test
+      - run: npm run check
+      - name: Attach the package
+        env: { GH_TOKEN: "${{ github.token }}", TAG: "${{ github.ref_name }}" }
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          file=$(ls dist/*-"${version}".floqpkg.json)
+          node -e 'const e=JSON.parse(require("fs").readFileSync("catalog-entry.json","utf8")); const h=require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"); if(e.version!==process.argv[2]||e.sha256!==h){console.error("catalog-entry.json does not match the build");process.exit(1)}' "$file" "$version"
+          gh release create "$TAG" "$file" dist/catalog-entry.json --title "$TAG" --notes "Floq plugin package. Install from Settings > Plugins > Browse plugins."

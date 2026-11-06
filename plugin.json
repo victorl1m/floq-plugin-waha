@@ -1,0 +1,28 @@
+{
+  "id": "waha",
+  "name": "WhatsApp (WAHA)",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "tier": "core",
+  "description": "A WhatsApp inbox backed by your own WAHA instance. Agents can read it; sending asks you first.",
+  "icon": "IconBrandWhatsapp",
+  "scope": "install",
+  "access": "owner",
+  "secrets": [
+    { "name": "WAHA_API_KEY", "description": "API key of your WAHA instance (sent as X-Api-Key)", "required": true },
+    { "name": "WAHA_WEBHOOK_HMAC", "description": "HMAC key configured in WAHA for webhooks. When set, every webhook is verified.", "required": false }
+  ],
+  "network": { "allow": [] },
+  "settings": [
+    { "key": "baseUrl", "type": "url", "label": "WAHA address", "description": "Where your WAHA instance listens, for example https://waha.example.com. Only this address is ever contacted.", "required": true },
+    { "key": "session", "type": "text", "label": "Session", "description": "WAHA session name. Defaults to \"default\".", "required": false }
+  ],
+  "contributes": {
+    "views": [{ "id": "inbox", "label": "WhatsApp", "icon": "IconBrandWhatsapp" }],
+    "routes": true,
+    "internalRoutes": true,
+    "webhooks": ["events"],
+    "skills": ["waha"],
+    "migrations": true
+  }
+}
