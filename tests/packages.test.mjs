@@ -35,6 +35,12 @@ test("the package passes the Floq package parser and the catalog entry matches i
   assert.equal(e.package, `https://github.com/victorl1m/floq-plugin-${e.id}/releases/download/v${e.version}/${e.id}-${e.version}.floqpkg.json`);
 });
 
+test("Floq accepts this entry's package URL (its allow-list) and the whole entry as a one-plugin catalog", () => {
+  const e = entryOf();
+  assert.ok(floq.packageUrlAllowed(e.package), e.package);
+  assert.deepEqual(floq.parseCatalog(Buffer.from(JSON.stringify({ format: 1, plugins: [e] }))).map((x) => x.id), [e.id]);
+});
+
 test("the committed catalog-entry.json is what the build produces", () => {
   assert.equal(readFileSync(join(ROOT, "catalog-entry.json"), "utf8"), readFileSync(join(tmp, "dist", "catalog-entry.json"), "utf8"));
 });

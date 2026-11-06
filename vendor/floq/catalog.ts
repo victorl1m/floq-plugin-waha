@@ -20,11 +20,16 @@ export interface CatalogEntry {
 
 type FetchLike = (url: string, init: { redirect: "manual"; signal: AbortSignal; headers?: Record<string, string> }) => Promise<Response>;
 
-/** The package URL must be https on github.com under the floq-plugins release path (a fixed prefix, not a pattern the catalog controls). */
+/** Same owner, one repo per plugin: `/victorl1m/floq-plugin-<id>/releases/download/`. The owner and repo-name shape are fixed here, not chosen by the catalog. */
+const PLUGIN_REPO_PREFIX = /^\/victorl1m\/floq-plugin-[a-z0-9]+(?:-[a-z0-9]+)*\/releases\/download\//;
+
+/** The package URL must be https on github.com under a release path of the floq-plugins catalog repo or of a `floq-plugin-<id>` repo of the same owner. */
 export function packageUrlAllowed(raw: string, prefix = PACKAGE_PATH_PREFIX): boolean {
   try {
     const u = new URL(raw);
-    return u.protocol === "https:" && u.hostname === PACKAGE_HOST && !u.username && !u.password && !u.port && u.pathname.startsWith(prefix) && !u.pathname.includes("..");
+    const path = u.pathname;
+    const location = path.startsWith(prefix) || PLUGIN_REPO_PREFIX.test(path);
+    return u.protocol === "https:" && u.hostname === PACKAGE_HOST && !u.username && !u.password && !u.port && location && !path.includes("..");
   } catch { return false; }
 }
 
