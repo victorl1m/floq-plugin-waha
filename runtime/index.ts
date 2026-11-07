@@ -1,7 +1,7 @@
 import { definePlugin, type PluginContext } from "../shared/sdk";
 import manifest from "../plugin.json" with { type: "json" };
 import { migrations } from "./migrations.js";
-import { CHAT_ID, TEXT_MAX, WahaError, normalizeBase, parseWebhook, sendText, sessionName, verifyHmac } from "./client.js";
+import { CHAT_ID, TEXT_MAX, WahaError, normalizeBase, parseWebhook, phoneToChatId, sendText, sessionName, verifyHmac } from "./client.js";
 
 /** Below the agent CLI's ~300 s request timeout. */
 export const SEND_APPROVAL_WAIT_MS = 280_000;
@@ -84,6 +84,29 @@ export default definePlugin({
       return send(userId, chatIdOf(b.chatId), textOf(b.text));
     });
 
+    /** The user's own number from settings (null when unset or invalid). `override` lets the settings panel test a number before it is saved. */
+    async function ownChat(userId: string, override?: unknown) {
+      const raw = override !== undefined && override !== "" ? override : (await ctx.settings.get(userId)).assistantPhone;
+      if (raw === undefined || raw === null || raw === "") return null;
+      const chatId = phoneToChatId(raw);
+      if (!chatId) throw ctx.httpError(400, "invalid_phone", "Use international format: + followed by 8 to 15 digits, for example +5511999999999.");
+      return chatId;
+    }
+    /** Messages the assistant sends to the user's own number: at most 10 per minute. */
+    const meSent: number[] = [];
+
+    ctx.routes.post("/test-message", async ({ userId, body }) => {
+      await owner(userId);
+      const chatId = await ownChat(userId, asObject(body).phone);
+      if (!chatId) throw ctx.httpError(400, "no_phone", "Enter your WhatsApp number first.");
+      return send(userId, chatId, "Floq test message: your assistant can reach you on this number.");
+    });
+    ctx.routes.get("/settings-status", async ({ userId }) => {
+      await owner(userId);
+      const s = await ctx.settings.get(userId);
+      return { alwaysAllowSend: s.alwaysAllowSend === true, assistantPhoneSet: phoneToChatId(s.assistantPhone) !== null };
+    });
+
     // ---- agents (`floq plugin call waha ...`): reads are free, a send needs the user's approval first ----
     ctx.internalRoutes.call("/chats", async ({ userId }) => { await owner(userId); return listChats(userId); });
     ctx.internalRoutes.call("/messages", async ({ userId, body }) => { await owner(userId); const b = asObject(body); return listMessages(userId, chatIdOf(b.chatId), b.limit); });
@@ -93,11 +116,27 @@ export default definePlugin({
       const chatId = chatIdOf(b.chatId), text = textOf(b.text);
       // The CLI's HTTP request gives up after ~5 minutes: wait less than that, and withdraw the approval if the agent goes away first,
       // so a message can never be sent after the agent saw a failure (which invites a retry and a second message).
+      // Opt-in setting (off by default, set by the administrator): skip the per-message approval.
+      if ((await ctx.settings.get(userId)).alwaysAllowSend === true) return send(userId, chatId, text);
       const decision = await ctx.approvals.request({ userId, action: `Send WhatsApp message to ${chatId}`, detail: text.slice(0, 900), signal, timeoutMs: SEND_APPROVAL_WAIT_MS });
       if (signal?.aborted) return { status: "expired" };
       if (decision !== "approved") return { status: decision };
       return send(userId, chatId, text);
     });
+
+    // The assistant messaging the user's own configured number: no approval, the recipient is the user and they opted in by saving the number.
+    ctx.internalRoutes.call("/message-me", async ({ userId, body }) => {
+      await owner(userId);
+      const text = textOf(asObject(body).text);
+      const chatId = await ownChat(userId);
+      if (!chatId) throw ctx.httpError(409, "no_phone", "The user has not set their WhatsApp number in the WAHA plugin settings.");
+      const now = Date.now();
+      while (meSent.length && now - meSent[0] > 60_000) meSent.shift();
+      if (meSent.length >= 10) throw ctx.httpError(429, "rate_limited", "Too many messages to the user's number; wait a minute.");
+      meSent.push(now);
+      return send(userId, chatId, text);
+    });
+    ctx.internalRoutes.call("/me", async ({ userId }) => { await owner(userId); const s = await ctx.settings.get(userId); return { canMessageMe: phoneToChatId(s.assistantPhone) !== null, sendNeedsApproval: s.alwaysAllowSend !== true }; });
 
     // ---- inbound: WAHA posts events here (token in the path, optional HMAC) ----
     ctx.webhooks.on("events", async (req) => {

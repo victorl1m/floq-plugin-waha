@@ -38,4 +38,16 @@ Floq asks the user first ("Plugin: WhatsApp (WAHA)" in the approval prompt) and 
 
 The call waits for the user for up to about 4½ minutes, then withdraws the request and returns `expired`. If your command is interrupted or times out, the request is withdrawn too: a message is never sent after you saw a failure. Wait for the user before asking again.
 
+If the user turned on **Always allow AI to send messages** in the plugin settings, `send` goes out immediately with no approval and returns `{"status":"sent"}`. Check first with `floq plugin call waha me` (`sendNeedsApproval`). Even then, never message someone on your own initiative.
+
+## Message the user themself
+
+If the user saved their own WhatsApp number (`canMessageMe` is true in `floq plugin call waha me`), you can notify them without approval:
+
+```bash
+floq plugin call waha message-me --json '{"text":"Your build finished."}'
+```
+
+It only ever goes to that saved number (max 10 per minute). A 409 means no number is saved: tell the user to add it in Settings > Plugins > WhatsApp (WAHA).
+
 Rules: write the message exactly as it should be sent (max 4096 characters), never send on your own initiative, and never ask the user for their WAHA key or webhook secret.

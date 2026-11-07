@@ -2,6 +2,15 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { PluginFetchResponse } from "../shared/sdk";
 
 export const CHAT_ID = /^[0-9A-Za-z._@-]{3,100}$/;
+/** Own number as typed by the user: optional spaces, dashes, dots and parentheses, then `+` and 8-15 digits (E.164, no leading zero). Returns the WAHA chat id, or null. */
+export function phoneToChatId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const t = raw.trim();
+  if (!/^\+[0-9 ().-]{8,30}$/.test(t)) return null;
+  const digits = t.slice(1).replace(/[ ().-]/g, "");
+  return /^[1-9][0-9]{7,14}$/.test(digits) ? `${digits}@c.us` : null;
+}
+
 export const TEXT_MAX = 4096;
 export const WEBHOOK_EVENTS = ["message", "message.any"];
 

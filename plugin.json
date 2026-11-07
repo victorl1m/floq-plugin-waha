@@ -1,28 +1,75 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "apiVersion": 1,
   "tier": "core",
-  "description": "A WhatsApp inbox backed by your own WAHA instance. Agents can read it; sending asks you first.",
+  "description": "A WhatsApp inbox backed by your own WAHA instance. Agents can read it; sending asks you first unless you turn on automatic sending.",
   "icon": "IconBrandWhatsapp",
   "scope": "install",
   "access": "owner",
   "secrets": [
-    { "name": "WAHA_API_KEY", "description": "API key of your WAHA instance (sent as X-Api-Key)", "required": true },
-    { "name": "WAHA_WEBHOOK_HMAC", "description": "HMAC key configured in WAHA for webhooks. When set, every webhook is verified.", "required": false }
+    {
+      "name": "WAHA_API_KEY",
+      "description": "API key of your WAHA instance (sent as X-Api-Key)",
+      "required": true
+    },
+    {
+      "name": "WAHA_WEBHOOK_HMAC",
+      "description": "HMAC key configured in WAHA for webhooks. When set, every webhook is verified.",
+      "required": false
+    }
   ],
-  "network": { "allow": [] },
+  "network": {
+    "allow": []
+  },
   "settings": [
-    { "key": "baseUrl", "type": "url", "label": "WAHA address", "description": "Where your WAHA instance listens, for example https://waha.example.com. Only this address is ever contacted.", "required": true },
-    { "key": "session", "type": "text", "label": "Session", "description": "WAHA session name. Defaults to \"default\".", "required": false }
+    {
+      "key": "baseUrl",
+      "type": "url",
+      "label": "WAHA address",
+      "description": "Where your WAHA instance listens, for example https://waha.example.com. Only this address is ever contacted.",
+      "required": true
+    },
+    {
+      "key": "session",
+      "type": "text",
+      "label": "Session",
+      "description": "WAHA session name. Defaults to \"default\".",
+      "required": false
+    },
+    {
+      "key": "alwaysAllowSend",
+      "type": "boolean",
+      "label": "Always allow AI to send messages",
+      "description": "WARNING: when on, agents send WhatsApp messages to ANY chat as your account without asking you first, and a message cannot be unsent. Off by default: each message then needs your approval in Floq. Turn on only if you accept that risk.",
+      "required": false
+    },
+    {
+      "key": "assistantPhone",
+      "type": "text",
+      "label": "Assistant can message me (your WhatsApp number)",
+      "description": "Your own number in international format, for example +5511999999999. When set, the assistant can send you messages at this number without asking each time. Use Send test message below to check it.",
+      "required": false
+    }
   ],
   "contributes": {
-    "views": [{ "id": "inbox", "label": "WhatsApp", "icon": "IconBrandWhatsapp" }],
+    "views": [
+      {
+        "id": "inbox",
+        "label": "WhatsApp",
+        "icon": "IconBrandWhatsapp"
+      }
+    ],
     "routes": true,
     "internalRoutes": true,
-    "webhooks": ["events"],
-    "skills": ["waha"],
-    "migrations": true
+    "webhooks": [
+      "events"
+    ],
+    "skills": [
+      "waha"
+    ],
+    "migrations": true,
+    "settingsPanel": true
   }
 }
