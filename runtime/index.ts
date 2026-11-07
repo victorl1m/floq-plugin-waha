@@ -5,6 +5,8 @@ import { CHAT_ID, TEXT_MAX, WahaError, normalizeBase, parseWebhook, phoneToChatI
 
 /** Below the agent CLI's ~300 s request timeout. */
 export const SEND_APPROVAL_WAIT_MS = 280_000;
+/** Unapproved sends allowed per minute when "Always allow AI to send messages" is on. */
+export const AUTO_SEND_PER_MIN = 10;
 
 /**
  * A WhatsApp inbox over the admin's own WAHA instance (install scope: one configuration, the enabling admin's API key).
@@ -94,6 +96,8 @@ export default definePlugin({
     }
     /** Messages the assistant sends to the user's own number: at most 10 per minute. */
     const meSent: number[] = [];
+    /** Sends that skipped approval under "Always allow": at most AUTO_SEND_PER_MIN per minute, then approval is required again. */
+    const autoSent: number[] = [];
 
     ctx.routes.post("/test-message", async ({ userId, body }) => {
       await owner(userId);
@@ -117,7 +121,12 @@ export default definePlugin({
       // The CLI's HTTP request gives up after ~5 minutes: wait less than that, and withdraw the approval if the agent goes away first,
       // so a message can never be sent after the agent saw a failure (which invites a retry and a second message).
       // Opt-in setting (off by default, set by the administrator): skip the per-message approval.
-      if ((await ctx.settings.get(userId)).alwaysAllowSend === true) return send(userId, chatId, text);
+      // Capped at AUTO_SEND_PER_MIN per minute: past that (a loop, or instructions injected through inbound messages) each send asks the user again.
+      if ((await ctx.settings.get(userId)).alwaysAllowSend === true) {
+        const now = Date.now();
+        while (autoSent.length && now - autoSent[0] > 60_000) autoSent.shift();
+        if (autoSent.length < AUTO_SEND_PER_MIN) { autoSent.push(now); return send(userId, chatId, text); }
+      }
       const decision = await ctx.approvals.request({ userId, action: `Send WhatsApp message to ${chatId}`, detail: text.slice(0, 900), signal, timeoutMs: SEND_APPROVAL_WAIT_MS });
       if (signal?.aborted) return { status: "expired" };
       if (decision !== "approved") return { status: decision };
