@@ -1,7 +1,8 @@
 import { definePlugin, type PluginContext } from "../shared/sdk";
 import manifest from "../plugin.json" with { type: "json" };
 import { migrations } from "./migrations.js";
-import { CHAT_ID, TEXT_MAX, WahaError, normalizeBase, parseWebhook, phoneToChatId, sendText, sessionName, verifyHmac } from "./client.js";
+import { createFallback, isFallbackText, DEFAULT_AFTER_MIN, MAX_AFTER_MIN } from "./fallback.js";
+import { CHAT_ID, TEXT_MAX, WahaError, chatDigits, editText, lidForPhone, normalizeBase, parseWebhook, phoneToChatId, sendText, sessionMe, sessionName, verifyHmac } from "./client.js";
 
 /** Below the agent CLI's ~300 s request timeout. */
 export const SEND_APPROVAL_WAIT_MS = 280_000;
@@ -37,19 +38,26 @@ export default definePlugin({
     const textOf = (v: unknown) => { if (typeof v !== "string" || !v.trim() || v.length > TEXT_MAX) throw ctx.httpError(400, "invalid_text", `text must be 1-${TEXT_MAX} characters`); return v; };
     const asObject = (b: unknown): Record<string, unknown> => (b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {});
 
-    async function listChats(userId: string) {
+    /** What agents read must never contain the fallback's prompts, codes or replies (an agent could echo a valid reply back). The owner's own view is unfiltered. */
+    const HIDDEN = "[WhatsApp fallback message, hidden from assistants]";
+    const forAgent = (body: unknown, agent: boolean) => (agent && isFallbackText(body) ? HIDDEN : String(body ?? ""));
+    /** Every WAHA message id this plugin has sent (bounded). Echoes of these are never replies. `hidden` ones are also never stored. */
+    const sentIds = new Set<string>(), hiddenIds = new Set<string>();
+    const remember = (set: Set<string>, id: string | null) => { if (!id) return; set.add(id); if (set.size > 2000) set.delete(set.values().next().value as string); };
+
+    async function listChats(userId: string, agent = false) {
       const r = await ctx.db.query(
         `SELECT chat_id, MAX(sent_at) AS last_at, COUNT(*)::int AS total, (ARRAY_AGG(body ORDER BY sent_at DESC))[1] AS last_body
            FROM {{p}}messages WHERE user_id = $1 GROUP BY chat_id ORDER BY MAX(sent_at) DESC LIMIT 100`, [userId]);
-      return { chats: r.rows.map((x) => ({ chatId: x.chat_id, lastBody: String(x.last_body ?? "").slice(0, 200), lastAt: new Date(x.last_at as string).toISOString(), total: x.total })) };
+      return { chats: r.rows.map((x) => ({ chatId: x.chat_id, lastBody: forAgent(x.last_body, agent).slice(0, 200), lastAt: new Date(x.last_at as string).toISOString(), total: x.total })) };
     }
 
-    async function listMessages(userId: string, chatId: string, limit: unknown) {
+    async function listMessages(userId: string, chatId: string, limit: unknown, agent = false) {
       const n = Math.min(200, Math.max(1, Number.parseInt(String(limit ?? "50"), 10) || 50));
       const r = await ctx.db.query(
         `SELECT msg_id, from_me, sender, body, has_media, sent_at FROM (
            SELECT * FROM {{p}}messages WHERE user_id = $1 AND chat_id = $2 ORDER BY sent_at DESC, id DESC LIMIT $3) t ORDER BY sent_at ASC, id ASC`, [userId, chatId, n]);
-      return { messages: r.rows.map((x) => ({ id: x.msg_id, fromMe: x.from_me, sender: x.sender, body: x.body, hasMedia: x.has_media, sentAt: new Date(x.sent_at as string).toISOString() })) };
+      return { messages: r.rows.map((x) => ({ id: x.msg_id, fromMe: x.from_me, sender: x.sender, body: forAgent(x.body, agent), hasMedia: x.has_media, sentAt: new Date(x.sent_at as string).toISOString() })) };
     }
 
     async function store(userId: string, m: { session: string; chatId: string; msgId: string; fromMe: boolean; sender: string; body: string; hasMedia: boolean; sentAt: Date }): Promise<boolean> {
@@ -60,12 +68,14 @@ export default definePlugin({
     }
 
     /** Sends through WAHA and records the outgoing message. Errors are generic: never the key, the URL or upstream text. */
-    async function send(userId: string, chatId: string, text: string) {
+    async function send(userId: string, chatId: string, text: string, opts: { hidden?: boolean } = {}) {
       const c = await config(userId);
       if (c.missingSettings.length || c.missingSecrets.length) throw ctx.httpError(409, "not_configured", "Set the WAHA address and the WAHA_API_KEY secret first.");
       let id: string | null;
       try { id = await sendText(ctx.fetchUserUrl, userId, c.base!, c.apiKey!, c.session, chatId, text); }
       catch (error) { ctx.log.warn("send failed", { status: error instanceof WahaError ? error.status : 0 }); throw ctx.httpError(502, "waha_unavailable", "WAHA could not send the message."); }
+      remember(sentIds, id);
+      if (opts.hidden) { remember(hiddenIds, id); return { status: "sent" as const, id: id ?? "" }; } // fallback traffic: not in the agent-readable inbox
       const msgId = id ?? `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       await store(userId, { session: c.session, chatId, msgId, fromMe: true, sender: "me", body: text, hasMedia: false, sentAt: new Date() });
       ctx.events.publish(userId, "message", { chatId, fromMe: true });
@@ -112,8 +122,8 @@ export default definePlugin({
     });
 
     // ---- agents (`floq plugin call waha ...`): reads are free, a send needs the user's approval first ----
-    ctx.internalRoutes.call("/chats", async ({ userId }) => { await owner(userId); return listChats(userId); });
-    ctx.internalRoutes.call("/messages", async ({ userId, body }) => { await owner(userId); const b = asObject(body); return listMessages(userId, chatIdOf(b.chatId), b.limit); });
+    ctx.internalRoutes.call("/chats", async ({ userId }) => { await owner(userId); return listChats(userId, true); });
+    ctx.internalRoutes.call("/messages", async ({ userId, body }) => { await owner(userId); const b = asObject(body); return listMessages(userId, chatIdOf(b.chatId), b.limit, true); });
     ctx.internalRoutes.call("/send", async ({ userId, body, signal }) => {
       await owner(userId);
       const b = asObject(body);
@@ -147,6 +157,54 @@ export default definePlugin({
     });
     ctx.internalRoutes.call("/me", async ({ userId }) => { await owner(userId); const s = await ctx.settings.get(userId); return { canMessageMe: phoneToChatId(s.assistantPhone) !== null, sendNeedsApproval: s.alwaysAllowSend !== true }; });
 
+    // ---- WhatsApp fallback for unanswered questions/approvals (opt-in `waFallback`; needs ctx.attention from the host) ----
+    /** Is the WAHA session logged in as the owner's own number? (cached 60 s; unknown means no) */
+    let meCache: { at: number; key: string; digits: string | null } | null = null;
+    async function isSelfSession(userId: string, ownChatId: string | null): Promise<boolean> {
+      const c = await config(userId);
+      if (!ownChatId || !c.base || !c.apiKey) return false;
+      const key = `${c.base}|${c.session}`;
+      if (!meCache || meCache.key !== key || Date.now() - meCache.at > 60_000) meCache = { at: Date.now(), key, digits: await sessionMe(ctx.fetchUserUrl, userId, c.base, c.apiKey, c.session) };
+      return meCache.digits !== null && meCache.digits === chatDigits(ownChatId);
+    }
+
+    /** The owner's `@lid`, cached (found 10 min, not found 60 s). */
+    const lidCache = new Map<string, { at: number; lid: string | null }>();
+    async function ownLid(userId: string, ownChatId: string): Promise<string | null> {
+      const c = await config(userId);
+      if (!c.base || !c.apiKey) return null;
+      const key = `${c.base}|${c.session}|${ownChatId}`;
+      const hit = lidCache.get(key);
+      if (hit && Date.now() - hit.at < (hit.lid ? 600_000 : 60_000)) return hit.lid;
+      const lid = await lidForPhone(ctx.fetchUserUrl, userId, c.base, c.apiKey, c.session, ownChatId);
+      lidCache.set(key, { at: Date.now(), lid });
+      return lid;
+    }
+
+    const fallback = ctx.attention ? createFallback({
+      attention: ctx.attention,
+      schedule: (ms, fn) => ctx.schedule(ms, fn),
+      getOwner: () => ctx.installOwner(),
+      kv: ctx.kv,
+      settings: async (userId) => {
+        const s = await ctx.settings.get(userId);
+        const raw = s.fallbackAfterMin === undefined || s.fallbackAfterMin === "" || s.fallbackAfterMin === null ? NaN : Number(s.fallbackAfterMin);
+        const n = Number.isFinite(raw) ? raw : DEFAULT_AFTER_MIN;
+        const own = phoneToChatId(s.assistantPhone);
+        return { enabled: s.waFallback === true, afterMin: Math.min(MAX_AFTER_MIN, Math.max(0, n)), ownChat: own, hmacConfigured: !!(await ctx.secrets.getInstall("WAHA_WEBHOOK_HMAC")), allowApprovals: s.waAllowApprovals === true, selfSession: await isSelfSession(userId, own) };
+      },
+      send: async (userId, chatId, text) => (await send(userId, chatId, text, { hidden: true })).id || null,
+      isOwnSend: (id) => sentIds.has(id),
+      ownLid,
+      edit: async (userId, chatId, msgId, text) => {
+        const c = await config(userId);
+        if (!c.base || !c.apiKey) throw new WahaError(0);
+        await editText(ctx.fetchUserUrl, userId, c.base, c.apiKey, c.session, chatId, msgId, text);
+      },
+      log: ctx.log,
+    }) : null;
+    fallback?.start();
+
     // ---- inbound: WAHA posts events here (token in the path, optional HMAC) ----
     ctx.webhooks.on("events", async (req) => {
       const msg = parseWebhook(req.json());
@@ -154,7 +212,10 @@ export default definePlugin({
       const o = await ctx.installOwner();
       if (!o) return { ok: true, ignored: true };
       if (msg.session !== sessionName((await ctx.settings.get(o)).session)) return { ok: true, ignored: true };
-      const inserted = await store(o, msg);
+      // Echo of a fallback message we sent: not stored (assistants read the inbox).
+      const inserted = hiddenIds.has(msg.msgId) ? false : await store(o, msg);
+      // A strict reply to a WhatsApp fallback prompt (only from the owner's own chat, only with the HMAC secret set) answers it and is not announced.
+      if (inserted && fallback && await fallback.inbound({ chatId: msg.chatId, fromMe: msg.fromMe, sender: msg.sender, body: msg.body, msgId: msg.msgId, source: msg.source })) return { ok: true };
       if (inserted && !msg.fromMe) {
         ctx.events.publish(o, "message", { chatId: msg.chatId, fromMe: false, preview: msg.body.slice(0, 120) });
         ctx.toast(o, { title: `WhatsApp: ${msg.sender}`, description: msg.body.slice(0, 120) || (msg.hasMedia ? "Sent a file" : "") });

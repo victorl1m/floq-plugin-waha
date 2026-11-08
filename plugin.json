@@ -1,7 +1,7 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "apiVersion": 1,
   "tier": "core",
   "description": "A WhatsApp inbox backed by your own WAHA instance. Agents can read it; sending asks you first unless you turn on automatic sending.",
@@ -51,6 +51,27 @@
       "label": "Assistant can message me (your WhatsApp number)",
       "description": "Your own number in international format, for example +5511999999999. When set, the assistant can send you messages at this number without asking each time. Use Send test message below to check it.",
       "required": false
+    },
+    {
+      "key": "waFallback",
+      "type": "boolean",
+      "label": "WhatsApp fallback for questions",
+      "description": "Off by default. When on, a question or approval unanswered in Floq after the delay below is sent once to your own number (max 20 per hour). Needs your number above and the webhook HMAC secret. Only single-question decisions can be answered there.",
+      "required": false
+    },
+    {
+      "key": "fallbackAfterMin",
+      "type": "number",
+      "label": "Fallback delay (minutes)",
+      "description": "Minutes before the WhatsApp message is sent. Default 3; 0 = off. Questions expire in Floq after about 10 minutes, so 10 or more never sends a question (approvals do not expire).",
+      "required": false
+    },
+    {
+      "key": "waAllowApprovals",
+      "type": "boolean",
+      "label": "Allow approvals from WhatsApp",
+      "description": "Off: WhatsApp can only DENY approvals. On: a reply with a one-time code can allow approvals not classed irreversible. RISK: that is a keyword check on agent-written text; some irreversible actions (email, payment) look harmless. See README.",
+      "required": false
     }
   ],
   "contributes": {
@@ -70,6 +91,7 @@
       "waha"
     ],
     "migrations": true,
-    "settingsPanel": true
+    "settingsPanel": true,
+    "attention": true
   }
 }

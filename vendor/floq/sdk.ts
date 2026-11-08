@@ -48,6 +48,8 @@ export interface PluginContributes {
   mcpServers: PluginMcpServerDecl[];
   skills: string[];
   migrations: boolean;
+  /** Needs `ctx.attention`: see pending questions/approvals of the owner. */
+  attention?: boolean;
 }
 
 export interface PluginManifest {
@@ -153,6 +155,19 @@ export interface PluginApprovals {
   request(input: { userId: string; action: string; detail?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<"approved" | "denied" | "expired">;
 }
 
+export interface AttentionItem {
+  kind: "decision" | "approval";
+  id: string; userId: string; sessionName?: string; projectId?: string;
+  questions?: { id: string; question?: string; text?: string; options?: ({ id: string; label: string } | string)[]; multiSelect?: boolean; allowText?: boolean }[];
+  action?: string; detail?: string; options?: ({ id: string; label: string } | string)[]; allowText?: boolean; irreversible?: boolean; createdAt?: number | string;
+}
+export interface PluginAttention {
+  onPending(fn: (item: AttentionItem) => void): () => void;
+  onResolved(fn: (e: { kind: "decision" | "approval"; id: string; status: string; by: "app" | "plugin" }) => void): () => void;
+  resolveDecision(id: string, answers: { questionId: string; optionIds: string[]; text: string }[]): Promise<void>;
+  resolveApproval(id: string, decision: "allow" | "deny"): Promise<void>;
+}
+
 export interface PluginContext {
   readonly pluginId: string;
   readonly manifest: PluginManifest;
@@ -186,6 +201,8 @@ export interface PluginContext {
   taskSources: PluginTaskSources;
   events: PluginEvents;
   approvals: PluginApprovals;
+  /** Requires `contributes.attention`. */
+  attention?: PluginAttention;
   log: PluginLog;
   /** Serialized: a run is skipped while the previous one is still in flight. Returns a cancel function. Cleared on stop. */
   schedule(intervalMs: number, fn: () => void | Promise<void>): () => void;

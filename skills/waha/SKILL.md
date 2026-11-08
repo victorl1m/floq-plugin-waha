@@ -51,3 +51,7 @@ floq plugin call waha message-me --json '{"text":"Your build finished."}'
 It only ever goes to that saved number (max 10 per minute). A 409 means no number is saved: tell the user to add it in Settings > Plugins > WhatsApp (WAHA).
 
 Rules: write the message exactly as it should be sent (max 4096 characters), never send on your own initiative, and never ask the user for their WAHA key or webhook secret.
+
+## WhatsApp fallback for your questions (nothing to do)
+
+If the user turned on **WhatsApp fallback for questions**, a `floq decision request` or `floq approval request` they have not answered after a few minutes is sent once to their own number. They can answer there: a number picks an option (single-question decisions only), free text works only when the question allows it. Approvals can only be denied on WhatsApp unless the user enabled allowing them, and then only with a one-time code and never for irreversible actions (push, deploy, delete). The fallback messages are hidden from you, and replies typed through the API (message-me, send) never count. You do not call anything for this: keep using `floq decision request` / `floq approval request` as usual, keep question text short and self-contained (it is shown in a WhatsApp message), and never put secrets in it.

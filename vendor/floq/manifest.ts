@@ -114,7 +114,7 @@ export function parseManifest(input: unknown): PluginManifest {
     return { key, type, label: str(s.label, `settings[${i}].label`), description: optStr(s.description, `settings[${i}].description`, 300), required: s.required === undefined ? undefined : bool(s.required, `settings[${i}].required`, false), options };
   });
 
-  const c = m.contributes === undefined ? {} : obj(m.contributes, "contributes", ["views", "taskSources", "rightSidebarTabs", "settingsPanel", "routes", "internalRoutes", "webhooks", "mcpServers", "skills", "migrations"]);
+  const c = m.contributes === undefined ? {} : obj(m.contributes, "contributes", ["views", "taskSources", "rightSidebarTabs", "settingsPanel", "routes", "internalRoutes", "webhooks", "mcpServers", "skills", "migrations", "attention"]);
 
   const idList = <T extends { id: string }>(raw: unknown, path: string, label: string, build: (r: Record<string, unknown>, p: string) => T, keys: string[]): T[] => {
     const seen = new Set<string>();
@@ -190,6 +190,7 @@ export function parseManifest(input: unknown): PluginManifest {
       internalRoutes: bool(c.internalRoutes, "contributes.internalRoutes", false),
       webhooks, mcpServers, skills,
       migrations: bool(c.migrations, "contributes.migrations", false),
+      attention: bool(c.attention, "contributes.attention", false),
     },
   };
 }

@@ -1,7 +1,7 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "apiVersion": 1,
   "description": "A WhatsApp inbox backed by your own WAHA instance. Agents can read it; sending asks you first unless you turn on automatic sending.",
   "icon": "IconBrandWhatsapp",
@@ -18,8 +18,9 @@
     "webhooks",
     "skills",
     "migrations",
-    "settingsPanel"
+    "settingsPanel",
+    "attention"
   ],
-  "package": "https://github.com/victorl1m/floq-plugin-waha/releases/download/v1.1.0/waha-1.1.0.floqpkg.json",
-  "sha256": "6c8d38979f60b3b21ec421b954b7b8ae0e6e999ec7b98e149a76d2a9faf8b1aa"
+  "package": "https://github.com/victorl1m/floq-plugin-waha/releases/download/v1.2.0/waha-1.2.0.floqpkg.json",
+  "sha256": "0191bbb24ac69d8207a9dddf452e9b51fa15fe06a85bc106afbd504d72201011"
 }
