@@ -142,7 +142,9 @@ export const MessageLog = forwardRef<MessageLogHandle, MessageLogProps>(function
     firstId.current = first;
     const lastMsg = messages[messages.length - 1];
     if (handled.current === null) { toBottom(); handled.current = lastMsg?.id ?? ""; return; }
-    if (!lastMsg || lastMsg.id === handled.current) return;
+    if (!lastMsg) return;
+    // Same last message, taller content (a reaction chip, an edit): stay at the bottom when the reader is there.
+    if (lastMsg.id === handled.current) { if (el && near.current) el.scrollTop = el.scrollHeight; return; }
     handled.current = lastMsg.id;
     if (lastMsg.fromMe || near.current) toBottom(); else setUnseen(true);
   }, [messages]);
