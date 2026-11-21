@@ -111,12 +111,14 @@ function QrPanel() {
 function PairForm({ onBack }: { onBack: () => void }) {
   const { api } = useWa();
   const [phone, setPhone] = useState("");
+  const touched = useRef(false);
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
     let live = true;
-    api<{ phone: string | null }>("/phone").then((r) => { if (live && r?.phone) setPhone((p) => p || r.phone!); }).catch(() => undefined);
+    // Prefill with the saved number, unless the person already started typing.
+    api<{ phone: string | null }>("/phone").then((r) => { if (live && r?.phone && !touched.current) setPhone((p) => p || r.phone!); }).catch(() => undefined);
     return () => { live = false; };
   }, [api]);
   async function request() {
@@ -132,7 +134,7 @@ function PairForm({ onBack }: { onBack: () => void }) {
       <p className="wa-sess-sub">Enter the number of the WhatsApp account you want to link, with the country code.</p>
       <label htmlFor="wa-pair-phone">Phone number</label>
       <form className="wa-pair-row" onSubmit={(e) => { e.preventDefault(); if (phone.trim() && !busy) void request(); }}>
-        <input id="wa-pair-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+55 11 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} aria-invalid={error ? true : undefined} />
+        <input id="wa-pair-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+55 11 99999-9999" value={phone} onFocus={() => { touched.current = true; }} onChange={(e) => { touched.current = true; setPhone(e.target.value); }} aria-invalid={error ? true : undefined} />
         <Button type="submit" variant="ghost" className="wa-pbtn" disabled={busy || !phone.trim()}>{busy && <Spinner />}{code ? "New code" : "Get code"}</Button>
       </form>
       {error && <p className="wa-pair-err" role="alert">{error}</p>}
