@@ -9,6 +9,7 @@ import { createStore } from "./messages.js";
 import { createInbox } from "./inbox.js";
 import { parseEnvelope } from "./parse.js";
 import { displayDigits } from "./ids.js";
+import { featuresOf } from "../shared/features.js";
 import { registerExtras } from "./extras.js";
 
 /** Below the agent CLI's ~300 s request timeout. */
@@ -51,7 +52,8 @@ export default definePlugin({
       const c = await core.config(userId);
       const configured = !c.missingSettings.length && !c.missingSecrets.length;
       const me = await identity.me(userId);
-      return { configured, missingSettings: c.missingSettings, missingSecrets: c.missingSecrets, session: c.session, engine: configured ? await core.engine(userId) : "", me: me ? { name: me.name, phone: displayDigits(me.id.split("@")[0]) } : null };
+      const engine = configured ? await core.engine(userId) : "";
+      return { configured, missingSettings: c.missingSettings, missingSecrets: c.missingSecrets, session: c.session, engine, features: featuresOf(engine), me: me ? { name: me.name, phone: displayDigits(me.id.split("@")[0]) } : null };
     });
 
     ctx.routes.get("/phone", async ({ userId }) => {

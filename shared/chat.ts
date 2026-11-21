@@ -4,10 +4,33 @@ import { formatPhoneDisplay } from "./phone";
 export interface Chat {
   chatId: string; kind?: "user" | "group" | "other"; name?: string | null; phone?: string | null;
   lastBody: string; lastFromMe?: boolean; lastHasMedia?: boolean; lastAt: string; total: number; unread?: number;
+  /** The user themself: their own WhatsApp account or their saved own number ("Message yourself"). */
+  isSelf?: boolean;
+  lastType?: MessageType; lastAck?: number; lastDeleted?: boolean; lastSenderName?: string;
+  archived?: boolean; pinned?: boolean; muted?: boolean; blocked?: boolean; markedUnread?: boolean;
+  /** Version stamp of the stored profile picture (fetch it with GET /avatar?chatId=), or null when there is none. */
+  avatar?: number | null;
+  labels?: string[];
 }
+export type MessageType = "chat" | "image" | "video" | "audio" | "ptt" | "document" | "sticker" | "location" | "vcard" | "poll" | "call" | "system" | "deleted" | "unknown";
+/** A file of a message. The bytes come from GET /media?id=<message id> -> { mime, filename, size, data (base64) }. */
+export interface Media { mime: string; filename: string; size: number | null; duration: number | null; width: number | null; height: number | null; gif?: boolean; available: boolean }
+export interface Reaction { emoji: string; count: number; mine: boolean; senders: string[] }
+export interface Poll { name: string; multiple: boolean; voters: number; options: { name: string; votes: number; voted: boolean }[] }
 /** The message a reply quotes. `id` is the quoted message's id when it is loaded in this conversation, else "". */
 export interface Quote { id: string; body: string; hasMedia?: boolean; fromMe: boolean; sender: string; senderName?: string }
-export interface Message { pending?: boolean; id: string; fromMe: boolean; sender: string; senderName?: string; body: string; hasMedia: boolean; sentAt: string; replyTo?: Quote | null }
+export interface Message {
+  pending?: boolean; failed?: boolean; id: string; fromMe: boolean; sender: string; senderName?: string; body: string; hasMedia: boolean; sentAt: string; replyTo?: Quote | null;
+  type?: MessageType; media?: Media | null;
+  /** 0 pending, 1 sent, 2 delivered, 3 read, 4 played, -1 failed. */
+  ack?: number; edited?: boolean; deleted?: boolean; starred?: boolean; pinned?: boolean; forwarded?: boolean;
+  location?: { lat: number; lng: number; name: string; address: string; live?: boolean };
+  vcards?: { name: string; phones: string[]; formatted: string[] }[];
+  poll?: Poll; preview?: { title: string; description: string; url: string }; mentions?: string[]; call?: { video: boolean; status: string };
+  reactions?: Reaction[];
+  /** Only on a message still being sent from this screen: a local object URL to show before the upload finishes. */
+  localUrl?: string;
+}
 
 type ChatLike = Pick<Chat, "chatId"> & Partial<Chat>;
 
@@ -35,9 +58,15 @@ export function displayName(c: ChatLike): string {
   if (digits) return formatPhoneDisplay(digits);
   return kindOf(c) === "group" ? "Group chat" : "Unknown contact";
 }
+/** The chat-list and header title: your own chat reads "Name (You)" like WhatsApp does. */
+export function chatTitle(c: ChatLike): string {
+  if (!c.isSelf) return displayName(c);
+  return cleanName(c) ? `${cleanName(c)} (You)` : "You";
+}
 
 /** Second header line: the number for a named contact, "Group" for groups, nothing when it would repeat the name. */
 export function subtitle(c: ChatLike): string {
+  if (c.isSelf) return "Message yourself";
   if (kindOf(c) === "group") return cleanName(c) ? "Group" : "";
   const digits = chatPhoneDigits(c);
   return cleanName(c) && digits ? formatPhoneDisplay(digits) : "";
@@ -60,11 +89,17 @@ export function hueOf(id: string): number {
 }
 
 /** Preview parts for the chat row: the UI renders the "You: " prefix and the file icon. */
-export function previewText(c: ChatLike): { prefix: string; text: string; media: boolean } {
+const TYPE_LABEL: Partial<Record<MessageType, string>> = { image: "Photo", video: "Video", audio: "Audio", ptt: "Voice message", document: "Document", sticker: "Sticker", location: "Location", vcard: "Contact", poll: "Poll", call: "Call" };
+/** Preview parts for the chat row: the UI renders the "You: " prefix and the icon of `kind`. */
+export function previewText(c: ChatLike): { prefix: string; text: string; media: boolean; kind: MessageType } {
   const text = (c.lastBody ?? "").replace(/\s+/g, " ").trim();
-  const prefix = c.lastFromMe ? "You: " : "";
-  if (text) return { prefix, text, media: false };
-  return c.lastHasMedia ? { prefix, text: "Photo or file", media: true } : { prefix, text: "No text", media: false };
+  const prefix = c.lastFromMe ? "You: " : kindOf(c) === "group" && c.lastSenderName ? `${c.lastSenderName.split(" ")[0]}: ` : "";
+  const kind = c.lastType ?? "chat";
+  if (c.lastDeleted) return { prefix: "", text: c.lastFromMe ? "You deleted this message" : "This message was deleted", media: false, kind: "deleted" };
+  const label = TYPE_LABEL[kind];
+  if (label) return { prefix, text: text || label, media: true, kind };
+  if (text) return { prefix, text, media: false, kind };
+  return c.lastHasMedia ? { prefix, text: "Photo or file", media: true, kind: "document" } : { prefix, text: "No text", media: false, kind };
 }
 
 /** Who wrote a quoted message: "You", their name, their number, or the chat's own name in a 1:1 chat. Never a raw id. */
