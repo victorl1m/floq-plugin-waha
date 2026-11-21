@@ -5,7 +5,7 @@ export interface Chat {
   chatId: string; kind?: "user" | "group" | "other"; name?: string | null; phone?: string | null;
   lastBody: string; lastFromMe?: boolean; lastHasMedia?: boolean; lastAt: string; total: number; unread?: number;
 }
-export interface Message { id: string; fromMe: boolean; sender: string; senderName?: string; body: string; hasMedia: boolean; sentAt: string }
+export interface Message { pending?: boolean; id: string; fromMe: boolean; sender: string; senderName?: string; body: string; hasMedia: boolean; sentAt: string }
 
 type ChatLike = Pick<Chat, "chatId"> & Partial<Chat>;
 
