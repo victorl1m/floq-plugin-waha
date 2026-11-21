@@ -137,7 +137,7 @@ export function createStore(core: Core, identity: Identity): Store {
            LEFT JOIN LATERAL (
              SELECT MAX(NULLIF(k.name, '')) AS name, MAX(NULLIF(k.push_name, '')) AS push_name, MAX(NULLIF(k.phone, '')) AS phone, BOOL_OR(k.has_picture) AS has_picture, MAX(k.picture_at) AS picture_at, BOOL_OR(k.blocked) AS blocked
                FROM {{p}}contacts k WHERE k.user_id = $1 AND (k.chat_id = a.cid OR k.chat_id IN (SELECT lid FROM {{p}}lid_map WHERE user_id = $1 AND pn = a.cid))) c ON TRUE
-          WHERE COALESCE(st.hidden, FALSE) = FALSE
+          WHERE (COALESCE(st.hidden, FALSE) = FALSE OR st.cleared_at IS NOT NULL) -- people-wiring: a message newer than cleared_at (only those are in agg) brings a deleted chat back
           ORDER BY COALESCE(st.pinned, FALSE) DESC, a.last_at DESC LIMIT 300`, [userId]);
       const all = r.rows.map((x) => {
         const chatId = String(x.chat_id), kind = kindOf(chatId);
