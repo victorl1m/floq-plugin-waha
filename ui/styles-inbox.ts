@@ -33,4 +33,10 @@ export const INBOX_CSS = `
 @container (max-width:1000px){.wa-side{position:absolute;inset:0;width:auto;border-left:0;z-index:5}}
 .wa-overlay{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;min-height:0;background:var(--wa-panel)}
 .wa-list-pane{position:relative}
+.wa-gate{position:absolute;inset:0;display:flex;flex-direction:column;min-height:0;background:var(--wa-bar);overflow:auto}
+.wa-gate>:last-child{flex:1;min-height:0;position:relative}
+.wa-root .wa-gate-back{align-self:flex-start;margin:10px 12px 0;color:var(--wa-sub);gap:6px}
+.wa-root .wa-gate-back svg{width:16px;height:16px}
+.wa-list-pane .wa-head{gap:2px}
+.wa-list-pane .wa-title{margin-right:auto}
 `;

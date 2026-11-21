@@ -10,7 +10,9 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.4.3",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4"
   },
-  "version": "2.3.0"
+  "version": "3.0.0"
 }

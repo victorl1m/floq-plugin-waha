@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PluginPage, PluginState, toast, usePluginApi, usePluginEvent } from "@/plugins/kit";
 import type { PluginViewProps } from "@/plugins/sdk";
 import { quoteOf, type Chat, type Message, type MessageType, type Quote } from "../shared/chat";
@@ -16,6 +16,9 @@ import { ChannelsView } from "./channels-view";
 import { LabelChips, LabelFilter, LabelPicker } from "./labels";
 import { PresenceLine } from "./presence";
 import { StatusView } from "./status-view";
+import { AccountMenu, SessionBanner } from "./session-banner";
+import { SessionScreen, useSessionInfo } from "./session-screen";
+import { IconArrowLeft } from "./icons";
 import { subtitle } from "../shared/chat";
 import { kindOfFile, mentionsIn, type Attachment } from "./composer";
 import { WaContext, errorCode, errorStatus, errorText, type Api, type Wa } from "./context";
@@ -28,6 +31,24 @@ type Phase = { kind: "loading" } | { kind: "error"; message: string } | { kind: 
 interface Pending { chatId: string; message: Message }
 
 const PAGE = 80;
+const LOGIN_STATES = ["SCAN_QR_CODE", "MISSING", "STOPPED", "FAILED", "STARTING", "PASSKEY_REQUIRED", "PASSKEY_CONFIRMATION_REQUIRED"];
+
+/** Shows the connection screen instead of the inbox while WhatsApp is not linked: always when there is nothing to read yet, on request otherwise. */
+function SessionGate({ hasChats, open, onClose, onConnected, children }: { hasChats: boolean; open: boolean; onClose: () => void; onConnected: () => void; children: ReactNode }) {
+  const { info } = useSessionInfo();
+  const down = info !== null && info.status !== "WORKING";
+  const was = useRef(false);
+  useEffect(() => { if (info?.status === "WORKING" && was.current) onConnected(); was.current = down; }, [info?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (down && (open || (!hasChats && LOGIN_STATES.includes(info.status)))) {
+    return (
+      <div className="wa-gate">
+        {hasChats && <Button type="button" variant="ghost" size="sm" className="wa-gate-back" onClick={onClose}><IconArrowLeft />Back to chats</Button>}
+        <SessionScreen onConnected={onConnected} />
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
 const visible = () => typeof document === "undefined" || document.visibilityState === "visible";
 const toBase64 = (blob: Blob) => new Promise<string>((resolve, reject) => {
   const r = new FileReader();
@@ -69,6 +90,7 @@ export default function InboxView({ plugin }: PluginViewProps) {
   const [info, setInfo] = useState(false);
   const [newChat, setNewChat] = useState(false);
   const [side, setSide] = useState<"" | "status" | "channels">("");
+  const [connect, setConnect] = useState(false);
   const [label, setLabel] = useState("");
   const [now, setNow] = useState(() => new Date());
   const selectedRef = useRef(selected);
@@ -303,6 +325,7 @@ export default function InboxView({ plugin }: PluginViewProps) {
     <WaContext.Provider value={wa}>
       <div className="wa-root" data-pane={pane} data-engine={engine || undefined}>
         <style>{CSS}</style>
+        <SessionGate hasChats={(chats?.length ?? 0) + archivedCount > 0} open={connect} onClose={() => setConnect(false)} onConnected={() => { setConnect(false); void loadStatus(); }}>
         <div className="wa-panel">
           <ChatList chats={showArchived ? archived : chats} error={chatsError} selected={selected} query={query} now={now} refreshing={refreshing} archivedCount={archivedCount} showArchived={showArchived}
             onArchived={(v) => { setShowArchived(v); if (v) void loadChats(); }} onQuery={setQuery} onSelect={(id) => openChat(id)} onRefresh={() => void loadChats()}
@@ -310,6 +333,7 @@ export default function InboxView({ plugin }: PluginViewProps) {
             rowExtra={(c) => <LabelChips ids={c.labels} max={1} />}
             filterExtra={features.labels ? <LabelFilter value={label} onChange={setLabel} /> : null}
             passes={label ? (c) => (c.labels ?? []).includes(label) : undefined}
+            banner={<SessionBanner onOpenConnect={() => setConnect(true)} />}
             overlay={side === "status" ? <StatusView onClose={() => setSide("")} /> : side === "channels" ? <ChannelsView onClose={() => setSide("")} /> : null}
             actions={(<>
               {features.status && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="wa-iconbtn" aria-label="Status" onClick={() => setSide("status")}><IconStatus /></Button></TooltipTrigger><TooltipContent>Status</TooltipContent></Tooltip>}
@@ -318,6 +342,7 @@ export default function InboxView({ plugin }: PluginViewProps) {
                 <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="wa-iconbtn" aria-label="New chat" onClick={() => setNewChat(true)}><IconNewChat /></Button></TooltipTrigger>
                 <TooltipContent>New chat</TooltipContent>
               </Tooltip>
+              <AccountMenu />
             </>)} />
           {chat ? (
             <Conversation chat={chat} messages={shown} hasMore={hasMore} error={messagesError} now={now} draft={drafts[selected] ?? ""} sending={sendingId === selected} focusToken={`${selected}:${focusN}`}
@@ -327,6 +352,7 @@ export default function InboxView({ plugin }: PluginViewProps) {
           ) : <EmptyConversation session={phase.status.session} />}
           {chat && info && <InfoPanel key={chat.chatId} chat={chat} onClose={() => setInfo(false)} />}
         </div>
+        </SessionGate>
         <NewChatDialog open={newChat} onOpenChange={setNewChat} />
         {features.calls && <CallBanner />}
       </div>

@@ -11,6 +11,7 @@ import { registerStatus } from "./status.js";
 import { registerChannels } from "./channels.js";
 import { registerCalls } from "./calls.js";
 import { registerPresence } from "./presence.js";
+import { registerSession } from "./session.js";
 
 export interface Deps { core: Core; identity: Identity; store: Store; inbox: Inbox }
 
@@ -19,4 +20,5 @@ export function registerExtras(deps: Deps): void {
   registerContacts(deps);
   registerGroups(deps);
   registerLabels(deps); registerStatus(deps); registerChannels(deps); registerCalls(deps); registerPresence(deps);
+  registerSession(deps);
 }
