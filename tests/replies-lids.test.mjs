@@ -23,7 +23,7 @@ before(async () => {
 });
 after(() => rmSync(tmp, { recursive: true, force: true }));
 const open = [];
-afterEach(async () => { for (const db of open.splice(0)) await db.close(); });
+afterEach(async () => { await plugin.stop(); for (const db of open.splice(0)) await db.close(); });
 
 const PN = "5534999990000@c.us", LID = "123456789012345@lid", GROUP = "120363041234567890@g.us";
 const ev = (payload, extra = {}) => ({ event: "message", session: "default", payload: { timestamp: 1700000000, body: "hi", hasMedia: false, fromMe: false, ...payload }, ...extra });
@@ -325,7 +325,7 @@ test("an agent reply still waits for approval and passes reply_to", async () => 
 });
 
 test("migrations: 003 is appended and additive", () => {
-  assert.deepEqual(migrations.map((m) => m.id), ["001_messages", "002_contacts_reads", "003_replies_lids"]);
+  assert.deepEqual(migrations.map((m) => m.id), ["001_messages", "002_contacts_reads", "003_replies_lids", "004_full_inbox"]);
   const sql = migrations[2].sql;
   assert.doesNotMatch(sql, /DROP|DELETE|UPDATE /i);
   for (const s of ["reply_to", "reply_body", "reply_sender", "{{p}}lid_map"]) assert.ok(sql.includes(s), s);
