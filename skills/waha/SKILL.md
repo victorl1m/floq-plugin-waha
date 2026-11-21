@@ -1,57 +1,35 @@
 ---
 name: waha
-description: Read the user's WhatsApp inbox and, after the user approves, send a message, through Floq's WAHA plugin (`floq plugin call waha ...`).
+description: Read the user's WhatsApp inbox and message the user on their own WhatsApp number through Floq's WAHA plugin (`floq plugin call waha ...`). Sending to other people needs the user's approval.
 ---
 
 # WhatsApp through WAHA
 
-The user connected their own WAHA instance to Floq. You never see the API key. Everything goes through `floq plugin call`, which runs as this session and is limited to the user who set the plugin up.
+The user connected their own WAHA instance to Floq. You never see the API key. Everything goes through `floq plugin call`.
 
-Check that the plugin is on:
-
-```bash
-floq plugin list
-```
-
-## Read
+## Read the inbox
 
 ```bash
-# Recent chats, newest first: chatId, lastBody, lastAt, total
 floq plugin call waha chats
-
-# Messages of one chat, oldest first (limit 1-200, default 50)
 floq plugin call waha messages --json '{"chatId":"5511999999999@c.us","limit":20}'
 ```
 
-Chat ids look like `5511999999999@c.us` (a person) or `1203630...@g.us` (a group). Only messages WAHA delivered to Floq after the plugin was turned on are stored.
+## Message the user (free)
 
-## Send (needs the user's approval)
+Use this for updates, results, and questions you want them to see on their phone. Write normal, clear sentences: the text goes to their number exactly as you write it. No approval, no codes.
+
+```bash
+floq plugin call waha message-me --json '{"text":"The build finished and all tests pass."}'
+```
+
+Returns `{"status":"sent"}`. Max 4096 characters. It only ever goes to the user's own saved number. A 409 means no number is saved or the user turned it off: do not retry, tell them in Floq. `floq plugin call waha me` shows `canMessageMe`.
+
+## Message other people (needs approval)
 
 ```bash
 floq plugin call waha send --json '{"chatId":"5511999999999@c.us","text":"Hello! The report is ready."}'
 ```
 
-Floq asks the user first ("Plugin: WhatsApp (WAHA)" in the approval prompt) and waits. The call returns one of:
+Floq asks the user first and waits. You get `{"status":"sent"}`, or `denied` / `expired` (nothing was sent: do not retry unless asked). If the user enabled "Always allow AI to send messages", it goes out at once (`sendNeedsApproval` is false in `me`); still never message someone on your own initiative.
 
-- `{"status":"sent"}`: the user approved and the message went out.
-- `{"status":"denied"}` or `{"status":"expired"}`: nothing was sent. Do not retry without being asked; tell the user instead.
-
-The call waits for the user for up to about 4½ minutes, then withdraws the request and returns `expired`. If your command is interrupted or times out, the request is withdrawn too: a message is never sent after you saw a failure. Wait for the user before asking again.
-
-If the user turned on **Always allow AI to send messages** in the plugin settings, `send` goes out immediately with no approval and returns `{"status":"sent"}`. Check first with `floq plugin call waha me` (`sendNeedsApproval`). Even then, never message someone on your own initiative.
-
-## Message the user themself
-
-If the user saved their own WhatsApp number (`canMessageMe` is true in `floq plugin call waha me`), you can notify them without approval:
-
-```bash
-floq plugin call waha message-me --json '{"text":"Your build finished."}'
-```
-
-It only ever goes to that saved number (max 10 per minute). A 409 means no number is saved: tell the user to add it in Settings > Plugins > WhatsApp (WAHA).
-
-Rules: write the message exactly as it should be sent (max 4096 characters), never send on your own initiative, and never ask the user for their WAHA key or webhook secret.
-
-## WhatsApp fallback for your questions (nothing to do)
-
-If the user turned on **WhatsApp fallback for questions**, a `floq decision request` or `floq approval request` they have not answered after a few minutes is sent once to their own number. They can answer there: a number picks an option (single-question decisions only), free text works only when the question allows it. Approvals can only be denied on WhatsApp unless the user enabled allowing them, and then only with a one-time code and never for irreversible actions (push, deploy, delete). The fallback messages are hidden from you, and replies typed through the API (message-me, send) never count. You do not call anything for this: keep using `floq decision request` / `floq approval request` as usual, keep question text short and self-contained (it is shown in a WhatsApp message), and never put secrets in it.
+Never ask for the WAHA key or webhook secret.

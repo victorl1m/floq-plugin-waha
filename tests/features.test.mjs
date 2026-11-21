@@ -74,11 +74,17 @@ test("test message surfaces a WAHA failure as 502", async () => {
   await assert.rejects(call(h.routes["POST /test-message"], {}), { status: 502 });
 });
 
-test("message-me needs a number, sends without approval, and is rate limited", async () => {
+test("message-me: needs a number, honours the switch, sends as written without approval, 30/min guard", async () => {
   await assert.rejects(call(harness(base).internal["/message-me"], { text: "x" }), { status: 409 });
+  await assert.rejects(call(harness({ ...base, assistantPhone: "+5511999999999", messageMe: false }).internal["/message-me"], { text: "x" }), { status: 409, code: "message_me_off" });
   const h = harness({ ...base, assistantPhone: "+5511999999999" });
-  for (let i = 0; i < 10; i++) assert.equal((await call(h.internal["/message-me"], { text: "x" })).status, "sent");
+  assert.deepEqual(await call(h.internal["/message-me"], { text: "Build done." }), { status: "sent" });
+  assert.equal(h.sent[0].text, "Build done."); assert.equal(h.sent[0].chatId, "5511999999999@c.us");
+  for (let i = 1; i < 30; i++) assert.equal((await call(h.internal["/message-me"], { text: "x" })).status, "sent");
   assert.equal(h.approvals.length, 0);
-  await assert.rejects(call(h.internal["/message-me"], { text: "x" }), { status: 429 });
+  await assert.rejects(call(h.internal["/message-me"], { text: "x" }), { status: 429, message: /loops/ });
+  await assert.rejects(call(h.internal["/message-me"], { text: "" }), { status: 400 });
   assert.deepEqual(await call(h.internal["/me"], {}), { canMessageMe: true, sendNeedsApproval: true });
+  assert.equal((await call(harness({ ...base, assistantPhone: "+5511999999999", messageMe: false }).internal["/me"], {})).canMessageMe, false);
+  assert.equal((await call(harness(base).internal["/me"], {})).canMessageMe, false);
 });

@@ -2,7 +2,7 @@
   "name": "floq-plugin-waha",
   "private": true,
   "type": "module",
-  "description": "A WhatsApp inbox in Floq backed by your own WAHA instance; agents can read it, sending asks you first.",
+  "description": "A WhatsApp inbox in Floq backed by your own WAHA instance; the AI can read it and message you freely, sending to others asks you first.",
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "node scripts/build.mjs --check",
@@ -10,5 +10,6 @@
   },
   "devDependencies": {
     "esbuild": "0.28.2"
-  }
+  },
+  "version": "2.0.0"
 }
