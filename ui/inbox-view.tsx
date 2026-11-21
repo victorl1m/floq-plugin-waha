@@ -4,7 +4,12 @@ import type { PluginViewProps } from "@/plugins/sdk";
 import { quoteOf, type Chat, type Message, type MessageType, type Quote } from "../shared/chat";
 import { featuresOf, type Engine, type Features } from "../shared/features";
 import { useAvatarUrl } from "./avatars";
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@/plugins/kit";
 import { ChatList } from "./chat-list";
+import { ChatMenu } from "./chat-menu";
+import { InfoPanel } from "./info-panel";
+import { NewChatDialog } from "./new-chat";
+import { IconNewChat } from "./icons-people";
 import { kindOfFile, mentionsIn, type Attachment } from "./composer";
 import { WaContext, errorCode, errorStatus, errorText, type Api, type Wa } from "./context";
 import { Conversation, EmptyConversation, type ConversationHandlers } from "./conversation";
@@ -54,6 +59,8 @@ export default function InboxView({ plugin }: PluginViewProps) {
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   const [sendingId, setSendingId] = useState("");
   const [focusN, setFocusN] = useState(0);
+  const [info, setInfo] = useState(false);
+  const [newChat, setNewChat] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -154,8 +161,9 @@ export default function InboxView({ plugin }: PluginViewProps) {
 
   const openChat = useCallback((chatId: string, hint?: Partial<Chat>) => {
     if (hint) setHints((h) => ({ ...h, [chatId]: { ...h[chatId], ...hint } }));
-    setSelected(chatId); setPane("chat");
+    setSelected(chatId); setPane("chat"); setInfo(false);
   }, []);
+  const closeChat = useCallback(() => { setSelected(""); setPane("list"); setInfo(false); }, []);
 
   const status = phase.kind === "ready" ? phase.status : null;
   const engine: Engine = status?.engine ?? "";
@@ -284,12 +292,22 @@ export default function InboxView({ plugin }: PluginViewProps) {
         <style>{CSS}</style>
         <div className="wa-panel">
           <ChatList chats={showArchived ? archived : chats} error={chatsError} selected={selected} query={query} now={now} refreshing={refreshing} archivedCount={archivedCount} showArchived={showArchived}
-            onArchived={(v) => { setShowArchived(v); if (v) void loadChats(); }} onQuery={setQuery} onSelect={(id) => openChat(id)} onRefresh={() => void loadChats()} />
+            onArchived={(v) => { setShowArchived(v); if (v) void loadChats(); }} onQuery={setQuery} onSelect={(id) => openChat(id)} onRefresh={() => void loadChats()}
+            rowMenu={(c) => <ChatMenu chat={c} onInfo={() => { openChat(c.chatId); setInfo(true); }} onGone={() => { if (selectedRef.current === c.chatId) closeChat(); }} />}
+            actions={(
+              <Tooltip>
+                <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="wa-iconbtn" aria-label="New chat" onClick={() => setNewChat(true)}><IconNewChat /></Button></TooltipTrigger>
+                <TooltipContent>New chat</TooltipContent>
+              </Tooltip>
+            )} />
           {chat ? (
             <Conversation chat={chat} messages={shown} hasMore={hasMore} error={messagesError} now={now} draft={drafts[selected] ?? ""} sending={sendingId === selected} focusToken={`${selected}:${focusN}`}
-              reply={replies[selected] ?? null} editing={editing} handlers={handlers} />
+              reply={replies[selected] ?? null} editing={editing} handlers={handlers}
+              onInfo={() => setInfo((v) => !v)} menu={<ChatMenu chat={chat} onInfo={() => setInfo(true)} onGone={closeChat} />} />
           ) : <EmptyConversation session={phase.status.session} />}
+          {chat && info && <InfoPanel key={chat.chatId} chat={chat} onClose={() => setInfo(false)} />}
         </div>
+        <NewChatDialog open={newChat} onOpenChange={setNewChat} />
       </div>
     </WaContext.Provider>
   );

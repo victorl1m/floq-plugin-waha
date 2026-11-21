@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Button, Tooltip, TooltipContent, TooltipTrigger, resolvePluginIcon } from "@/plugins/kit";
 import { chatPhoneDigits, chatTitle, subtitle, type Chat, type Message, type Quote } from "../shared/chat";
 import { Avatar } from "./avatar";
@@ -33,10 +33,12 @@ export interface ConversationHandlers {
 interface Props {
   chat: Chat; messages: Message[] | null; hasMore: boolean; error: string; now: Date; draft: string; sending: boolean; focusToken: string; reply: Quote | null;
   editing: { id: string; body: string } | null; handlers: ConversationHandlers;
+  /** Header pieces owned by the inbox: opening the info panel, the chat menu, a line under the name (presence). */
+  onInfo?: () => void; menu?: ReactNode; presence?: ReactNode;
 }
 
 /** Header, message log (or its loading / error / empty state) and composer for one chat, plus the dialogs and panels that belong to it. */
-export function Conversation({ chat, messages, hasMore, error, now, draft, sending, focusToken, reply, editing, handlers: h }: Props) {
+export function Conversation({ chat, messages, hasMore, error, now, draft, sending, focusToken, reply, editing, handlers: h, onInfo, menu, presence }: Props) {
   const { features } = useWa();
   const name = chatTitle(chat), sub = subtitle(chat);
   const composer = useRef<ComposerHandle>(null);
@@ -61,8 +63,11 @@ export function Conversation({ chat, messages, hasMore, error, now, draft, sendi
     <section className="wa-pane wa-chat-pane" aria-label="Conversation" {...dnd}>
       <div className="wa-head wa-chat-head">
         <Button type="button" variant="ghost" size="icon" className="wa-iconbtn wa-back" aria-label="Back to chats" onClick={h.onBack}><IconArrowLeft /></Button>
-        <Avatar chat={chat} small />
-        <div className="wa-who" title={name}><b>{name}</b>{sub && sub !== name && <span>{sub}</span>}</div>
+        <button type="button" className="wa-who-btn" onClick={onInfo} disabled={!onInfo} aria-label={`${name}: ${chat.kind === "group" ? "group info" : "contact info"}`}>
+          <Avatar chat={chat} small />
+          <div className="wa-who" title={name}><b>{name}</b>{presence ?? (sub && sub !== name && <span>{sub}</span>)}</div>
+        </button>
+        <div className="wa-head-actions">{menu}</div>
       </div>
       {error && messages === null ? (
         <div className="wa-center wa-wall"><IconAlert width={28} height={28} /><strong>Could not load messages</strong><p>{error}</p><Button type="button" variant="outline" size="sm" className="wa-btn" onClick={h.onRetry}>Try again</Button></div>
