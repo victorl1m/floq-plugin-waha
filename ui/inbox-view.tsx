@@ -260,21 +260,25 @@ export default function InboxView({ plugin }: PluginViewProps) {
     onAction: async (action, m, arg) => {
       const chatId = selected;
       const patch = (fn: (x: Message) => Message) => setMessages((ms) => ms && ms.map((x) => (x.id === m.id ? fn(x) : x)));
+      const settle = () => { if (selectedRef.current === chatId) void loadMessages(chatId); };
+      // The log shows a reaction at once and takes it back itself when this throws.
+      if (action === "react") {
+        try { await api("/react", { method: "POST", body: { messageId: m.id, emoji: typeof arg === "string" ? arg : "" } }); }
+        catch (e) { throw new Error(explain(e)); }
+        finally { settle(); }
+        return;
+      }
       try {
-        if (action === "react") {
-          const emoji = typeof arg === "string" ? arg : "";
-          patch((x) => { const rest = (x.reactions ?? []).map((r) => (r.mine ? { ...r, mine: false, count: r.count - 1 } : r)).filter((r) => r.count > 0); const hit = rest.find((r) => r.emoji === emoji); return { ...x, reactions: !emoji ? rest : hit ? rest.map((r) => (r === hit ? { ...r, mine: true, count: r.count + 1 } : r)) : [...rest, { emoji, count: 1, mine: true, senders: [] }] }; });
-          await api("/react", { method: "POST", body: { messageId: m.id, emoji } });
-        } else if (action === "star") { const star = arg !== false && !m.starred; patch((x) => ({ ...x, starred: star })); await api("/star", { method: "POST", body: { messageId: m.id, star } }); }
-        else if (action === "pin") { const pin = arg !== false && !m.pinned; patch((x) => ({ ...x, pinned: pin })); await api("/pin", { method: "POST", body: { messageId: m.id, pin, ...(typeof arg === "number" ? { duration: arg } : {}) } }); }
-        else if (action === "delete") { await api("/delete", { method: "POST", body: { messageId: m.id, forEveryone: arg === true || arg === "everyone" } }); }
+        if (action === "star") { const star = typeof arg === "boolean" ? arg : !m.starred; patch((x) => ({ ...x, starred: star })); await api("/star", { method: "POST", body: { messageId: m.id, star } }); }
+        else if (action === "pin") { const pin = typeof arg === "boolean" ? arg : !m.pinned; patch((x) => ({ ...x, pinned: pin })); await api("/pin", { method: "POST", body: { messageId: m.id, pin } }); }
+        else if (action === "delete") { await api("/delete", { method: "POST", body: { messageId: m.id, forEveryone: (arg as { forEveryone?: boolean } | undefined)?.forEveryone === true } }); void loadChats(); }
         else if (action === "forward") { const to = Array.isArray(arg) ? arg : []; if (!to.length) return; await api("/forward", { method: "POST", body: { messageId: m.id, to } }); toast.success(to.length === 1 ? "Message forwarded" : `Forwarded to ${to.length} chats`); void loadChats(); }
         else if (action === "vote") { await api("/poll-vote", { method: "POST", body: { messageId: m.id, options: Array.isArray(arg) ? arg : [] } }); }
-        else return;
       } catch (e) {
-        toast.error({ react: "Reaction not sent", star: "Could not star the message", pin: "Could not pin the message", delete: "Message not deleted", forward: "Message not forwarded", vote: "Vote not sent", info: "" }[action] || "That did not work", { description: explain(e) });
+        toast.error({ star: "Could not star the message", pin: "Could not pin the message", delete: "Message not deleted", forward: "Message not forwarded", vote: "Vote not sent" }[action as string] ?? "That did not work", { description: explain(e) });
+        if (action === "forward") throw e;
       }
-      if (selectedRef.current === chatId) void loadMessages(chatId);
+      settle();
     },
     onExtraSend: async (kind, body) => {
       const chatId = selected, replyTo = replies[chatId] ?? null;

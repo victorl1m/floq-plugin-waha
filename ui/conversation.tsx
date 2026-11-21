@@ -7,6 +7,7 @@ import { useWa } from "./context";
 import { IconAlert, IconArrowLeft, IconLock, IconSearch, Spinner } from "./icons";
 import { IconPlus } from "./icons-composer";
 import { MessageLog } from "./message-log";
+import { ChatSearch, ContactDialog, ForwardDialog, LocationDialog, MessageInfoDialog, PollDialog } from "./dialogs";
 
 const IconWhatsApp = resolvePluginIcon("IconBrandWhatsapp");
 
@@ -42,6 +43,12 @@ export function Conversation({ chat, messages, hasMore, error, now, draft, sendi
   const { features } = useWa();
   const name = chatTitle(chat), sub = subtitle(chat);
   const composer = useRef<ComposerHandle>(null);
+  const log = useRef<{ jumpTo(id: string): boolean }>(null);
+  const [dialog, setDialog] = useState<"" | "poll" | "location" | "contact">("");
+  const [forward, setForward] = useState<Message | null>(null);
+  const [infoOf, setInfoOf] = useState<Message | null>(null);
+  const [searching, setSearching] = useState(false);
+  useEffect(() => { setSearching(false); setDialog(""); setForward(null); setInfoOf(null); }, [chat.chatId]);
   const [dragging, setDragging] = useState(false);
   const depth = useRef(0);
   // Group participants for @mentions: the senders seen in the log.
@@ -67,8 +74,15 @@ export function Conversation({ chat, messages, hasMore, error, now, draft, sendi
           <Avatar chat={chat} small />
           <div className="wa-who" title={name}><b>{name}</b>{presence ?? (sub && sub !== name && <span>{sub}</span>)}</div>
         </button>
-        <div className="wa-head-actions">{menu}</div>
+        <div className="wa-head-actions">
+          <Tooltip>
+            <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="wa-iconbtn" aria-label="Search in this chat" aria-pressed={searching} onClick={() => setSearching((v) => !v)}><IconSearch /></Button></TooltipTrigger>
+            <TooltipContent>Search</TooltipContent>
+          </Tooltip>
+          {menu}
+        </div>
       </div>
+      {searching && <ChatSearch chat={chat} now={now} onJump={(id) => { if (!log.current?.jumpTo(id)) h.onLoadMore(); }} onClose={() => setSearching(false)} />}
       {error && messages === null ? (
         <div className="wa-center wa-wall"><IconAlert width={28} height={28} /><strong>Could not load messages</strong><p>{error}</p><Button type="button" variant="outline" size="sm" className="wa-btn" onClick={h.onRetry}>Try again</Button></div>
       ) : messages === null ? (
@@ -76,12 +90,18 @@ export function Conversation({ chat, messages, hasMore, error, now, draft, sendi
       ) : messages.length === 0 ? (
         <div className="wa-center wa-wall"><span className="wa-note">{chat.isSelf ? "Messages you send here go to your own WhatsApp" : "No messages in this chat yet"}</span></div>
       ) : (
-        <MessageLog key={chat.chatId} chat={chat} messages={messages} now={now} onReply={h.onReply} />
+        <MessageLog ref={log} key={chat.chatId} chat={chat} messages={messages} now={now} hasMore={hasMore} onLoadMore={h.onLoadMore} onReply={h.onReply} onEdit={h.onEdit}
+          onAction={(action, m, arg) => { if (action === "forward") { setForward(m); return; } if (action === "info") { setInfoOf(m); return; } return h.onAction(action, m, arg); }} />
       )}
-      <Composer ref={composer} value={draft} onChange={h.onDraft} onSend={h.onSend} onSendVoice={h.onSendVoice} onTyping={h.onTyping}
+      <Composer ref={composer} value={draft} onChange={h.onDraft} onSend={h.onSend} onSendVoice={h.onSendVoice} onTyping={h.onTyping} onExtra={setDialog}
         features={{ media: features.media, voice: features.voice, poll: features.poll, location: features.location, contact: features.contact }}
         mentions={mentions} sending={sending} placeholder="Type a message" focusToken={focusToken} chat={chat} reply={reply} onCancelReply={h.onCancelReply} editing={editing} onCancelEdit={h.onCancelEdit} />
       {dragging && <div className="wa-drop" aria-hidden="true"><div><IconPlus />Drop files to send</div></div>}
+      <PollDialog open={dialog === "poll"} onOpenChange={(o) => !o && setDialog("")} onCreate={async (p) => { if (await h.onExtraSend("poll", p)) setDialog(""); }} />
+      <LocationDialog open={dialog === "location"} onOpenChange={(o) => !o && setDialog("")} onSend={async (p) => { if (await h.onExtraSend("location", p)) setDialog(""); }} />
+      <ContactDialog open={dialog === "contact"} onOpenChange={(o) => !o && setDialog("")} onSend={async (contacts) => { if (await h.onExtraSend("contact", { contacts })) setDialog(""); }} />
+      {forward && <ForwardDialog message={forward} open onOpenChange={(o) => !o && setForward(null)} onForward={async (to) => { await h.onAction("forward", forward, to); setForward(null); }} />}
+      {infoOf && <MessageInfoDialog message={infoOf} open onOpenChange={(o) => !o && setInfoOf(null)} />}
     </section>
   );
 }
