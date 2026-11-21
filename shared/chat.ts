@@ -36,7 +36,7 @@ export function displayName(c: ChatLike): string {
 
 /** Second header line: the number for a named contact, "Group" for groups, nothing when it would repeat the name. */
 export function subtitle(c: ChatLike): string {
-  if (kindOf(c) === "group") return "Group";
+  if (kindOf(c) === "group") return cleanName(c) ? "Group" : "";
   const digits = chatPhoneDigits(c);
   return cleanName(c) && digits ? formatPhoneDisplay(digits) : "";
 }
