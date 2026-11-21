@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "
 import { cn } from "@/plugins/kit";
 import { chatKind, chatPhoneDigits, fullDate, groupMessages, hueOf, timeOf, type Chat, type Message } from "../shared/chat";
 import { formatPhoneDisplay } from "../shared/phone";
-import { IconChevronDown, IconFile } from "./icons";
+import { IconCheck, IconChevronDown, IconClock, IconFile } from "./icons";
 
 const NEAR_PX = 120;
 const senderLabel = (m: Message) => {
@@ -24,7 +24,7 @@ function Bubble({ m, first, last, sender }: { m: Message; first: boolean; last: 
         )}
         {m.body}
         {!m.body && !m.hasMedia && <span className="wa-unsupported">Unsupported message</span>}
-        <time className="wa-stamp" dateTime={m.pending ? undefined : m.sentAt} title={m.pending ? undefined : fullDate(m.sentAt)}>{m.pending ? "Sending…" : timeOf(m.sentAt)}</time>
+        <time className="wa-stamp" dateTime={m.pending ? undefined : m.sentAt} title={m.pending ? undefined : fullDate(m.sentAt)}>{timeOf(m.sentAt)}{m.fromMe && (m.pending ? <IconClock aria-label="Sending" /> : <IconCheck aria-label="Sent" />)}</time>
       </div>
     </div>
   );
