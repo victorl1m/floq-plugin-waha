@@ -56,7 +56,7 @@ export default function PeopleDemo({ plugin }: PluginViewProps) {
         <style>{CSS}</style>
         <div className="wa-panel">
           <div className="wa-demo-list">
-            <ChatList chats={chats} error="" selected={selected} query={query} now={new Date()} refreshing={false} onQuery={setQuery} onSelect={setSelected} onRefresh={refreshChats} />
+            <ChatList chats={chats} error="" selected={selected} query={query} now={new Date()} refreshing={false} archivedCount={0} showArchived={false} onArchived={() => undefined} onQuery={setQuery} onSelect={setSelected} onRefresh={refreshChats} />
             <Button type="button" className="wa-demo-fab" size="icon" aria-label="New chat" onClick={() => setNewOpen(true)}><IconNewChat /></Button>
           </div>
           {chat ? (

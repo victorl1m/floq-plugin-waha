@@ -76,7 +76,7 @@ export function subtitle(c: ChatLike): string {
 export function initials(c: ChatLike): string {
   if (kindOf(c) === "group") return "";
   const words = cleanName(c).match(/[\p{L}\p{N}]+/gu) ?? [];
-  if (words.length) return (words.length === 1 ? [...words[0]].slice(0, 2).join("") : [...words[0]][0] + [...words[words.length - 1]][0]).toUpperCase();
+  if (words.length) return (words.length === 1 ? [...words[0]!].slice(0, 2).join("") : [...words[0]!][0]! + [...words[words.length - 1]!][0]!).toUpperCase();
   const digits = chatPhoneDigits(c);
   return digits ? digits.slice(-2) : "?";
 }

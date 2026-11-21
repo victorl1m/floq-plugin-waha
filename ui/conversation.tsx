@@ -97,8 +97,8 @@ export function Conversation({ chat, messages, hasMore, error, now, draft, sendi
         features={{ media: features.media, voice: features.voice, poll: features.poll, location: features.location, contact: features.contact }}
         mentions={mentions} sending={sending} placeholder="Type a message" focusToken={focusToken} chat={chat} reply={reply} onCancelReply={h.onCancelReply} editing={editing} onCancelEdit={h.onCancelEdit} />
       {dragging && <div className="wa-drop" aria-hidden="true"><div><IconPlus />Drop files to send</div></div>}
-      <PollDialog open={dialog === "poll"} onOpenChange={(o) => !o && setDialog("")} onCreate={async (p) => { if (await h.onExtraSend("poll", p)) setDialog(""); }} />
-      <LocationDialog open={dialog === "location"} onOpenChange={(o) => !o && setDialog("")} onSend={async (p) => { if (await h.onExtraSend("location", p)) setDialog(""); }} />
+      <PollDialog open={dialog === "poll"} onOpenChange={(o) => !o && setDialog("")} onCreate={async (p) => { if (await h.onExtraSend("poll", { ...p })) setDialog(""); }} />
+      <LocationDialog open={dialog === "location"} onOpenChange={(o) => !o && setDialog("")} onSend={async (p) => { if (await h.onExtraSend("location", { ...p })) setDialog(""); }} />
       <ContactDialog open={dialog === "contact"} onOpenChange={(o) => !o && setDialog("")} onSend={async (contacts) => { if (await h.onExtraSend("contact", { contacts })) setDialog(""); }} />
       {forward && <ForwardDialog message={forward} open onOpenChange={(o) => !o && setForward(null)} onForward={async (to) => { await h.onAction("forward", forward, to); setForward(null); }} />}
       {infoOf && <MessageInfoDialog message={infoOf} open onOpenChange={(o) => !o && setInfoOf(null)} />}

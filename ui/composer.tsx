@@ -9,7 +9,8 @@ import { IconCamera, IconContact, IconDocument, IconImage, IconMic, IconPencil, 
 import { quoteStyle } from "./message-log";
 import { startVoice, voiceSupported, type VoiceSession } from "./voice-recorder";
 
-export type { Attachment, AttachmentKind } from "./attachments";
+export type { Attachment } from "./attachments";
+export type { AttachmentKind } from "./composer-utils";
 export { MAX_FILE_BYTES, formatDuration, kindOfFile, mentionsIn, insertAtCursor } from "./composer-utils";
 
 export interface ComposerFeatures { media: boolean; voice: boolean; poll: boolean; location: boolean; contact: boolean }

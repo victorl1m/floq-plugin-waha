@@ -42,7 +42,7 @@ export function EmojiPicker({ onPick, onClose }: { onPick: (char: string) => voi
   const onGridKey = (e: KeyboardEvent) => {
     const list = buttons(), i = list.indexOf(document.activeElement as HTMLButtonElement);
     if (i < 0) return;
-    const go = (b?: HTMLButtonElement) => { if (b) { e.preventDefault(); b.focus(); b.scrollIntoView({ block: "nearest" }); } };
+    const go = (b?: HTMLElement) => { if (b) { e.preventDefault(); b.focus(); b.scrollIntoView({ block: "nearest" }); } };
     const r = list[i].getBoundingClientRect(), cx = r.left + r.width / 2;
     const vertical = (dir: 1 | -1) => {
       const rows = list.filter((b) => (dir > 0 ? b.getBoundingClientRect().top > r.top + 4 : b.getBoundingClientRect().top < r.top - 4));
