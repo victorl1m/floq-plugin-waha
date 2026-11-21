@@ -49,3 +49,20 @@ export function formatPhone(digits: string): string {
   const c = countryOf(digits);
   return c ? `+${c.code} ${formatLocal(digits.slice(c.code.length), c)}` : `+${digits}`;
 }
+
+/** Messenger-style display, grouped from the end: "+55 34 9263-7647", "+1 555 123-4567", "+351 912 345 678", unknown code "+" + digits. */
+export function formatPhoneDisplay(digits: string): string {
+  // Threes from the end; a lone leading digit joins the next group.
+  const threes = (s: string) => {
+    const parts: string[] = [];
+    for (let end = s.length; end > 0; end -= 3) parts.unshift(s.slice(Math.max(0, end - 3), end));
+    if (parts.length > 1 && parts[0].length === 1) parts.splice(0, 2, parts[0] + parts[1]);
+    return parts.join(" ");
+  };
+  const c = countryOf(digits);
+  if (!c) return "+" + threes(digits);
+  const local = digits.slice(c.code.length);
+  if (c.code === "55" && (local.length === 10 || local.length === 11)) return `+55 ${local.slice(0, 2)} ${local.slice(2, -4)}-${local.slice(-4)}`;
+  if (c.code === "1" && local.length === 10) return `+1 ${local.slice(0, 3)} ${local.slice(3, 6)}-${local.slice(6)}`;
+  return `+${c.code} ${threes(local)}`;
+}
