@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "node scripts/build.mjs --check",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test --test-timeout=300000 tests/*.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.4.3",
