@@ -1,7 +1,7 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "apiVersion": 1,
   "description": "A WhatsApp inbox on your own WAHA instance. The AI can read it and message you freely on your own number; messages to other people need your approval.",
   "icon": "IconBrandWhatsapp",
@@ -20,6 +20,6 @@
     "migrations",
     "settingsPanel"
   ],
-  "package": "https://github.com/victorl1m/floq-plugin-waha/releases/download/v2.1.0/waha-2.1.0.floqpkg.json",
-  "sha256": "e622ab9acae9f0bb7e9044d3c15b4aa4ac4cb63d5db71b2b488a0a1223369f7a"
+  "package": "https://github.com/victorl1m/floq-plugin-waha/releases/download/v2.2.0/waha-2.2.0.floqpkg.json",
+  "sha256": "47c47747e27f24b1f9a676cecb1afd5a0a12bb7a03c3b8dde24fda1c8285bcd8"
 }

@@ -1,7 +1,7 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "apiVersion": 1,
   "tier": "core",
   "description": "A WhatsApp inbox on your own WAHA instance. The AI can read it and message you freely on your own number; messages to other people need your approval.",
