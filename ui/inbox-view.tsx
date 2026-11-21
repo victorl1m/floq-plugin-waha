@@ -3,6 +3,7 @@ import { PluginPage, PluginState, toast, usePluginApi, usePluginEvent } from "@/
 import type { PluginViewProps } from "@/plugins/sdk";
 import { quoteOf, type Chat, type Message, type Quote } from "../shared/chat";
 import { ChatList } from "./chat-list";
+import type { Attachment, ComposerFeatures } from "./composer";
 import { Conversation, EmptyConversation } from "./conversation";
 import { CSS } from "./styles";
 
@@ -10,6 +11,8 @@ interface Status { configured: boolean; missingSettings: string[]; missingSecret
 type Phase = { kind: "loading" } | { kind: "error"; message: string } | { kind: "forbidden" } | { kind: "ready"; status: Status };
 interface Pending { id: string; chatId: string; text: string; at: string; replyTo: Quote | null }
 
+// composer-wiring: everything on for the demo; the real flags come from the runtime.
+const FEATURES: ComposerFeatures = { media: true, voice: true, poll: true, location: true, contact: true };
 const statusOf = (e: unknown) => (e as { status?: number } | null)?.status;
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
 const visible = () => typeof document === "undefined" || document.visibilityState === "visible";
@@ -30,6 +33,9 @@ export default function InboxView({ plugin }: PluginViewProps) {
   const [pending, setPending] = useState<Pending[]>([]);
   const [replies, setReplies] = useState<Record<string, Quote | null>>({});
   const [sendingId, setSendingId] = useState("");
+  // composer-wiring: demo hook for the edit bar (window.__waEdit(id, body)); the real edit flow comes with the runtime work.
+  const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
+  useEffect(() => { (window as unknown as { __waEdit?: unknown }).__waEdit = (id: string, body: string) => setEditing({ id, body }); return () => { delete (window as unknown as { __waEdit?: unknown }).__waEdit; }; }, []);
   const [focusN, setFocusN] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const selectedRef = useRef(selected);
@@ -94,18 +100,25 @@ export default function InboxView({ plugin }: PluginViewProps) {
     void loadChats();
   });
 
-  async function send() {
+  // composer-wiring: attachments and voice only post their metadata to /send-media and /send-voice until the runtime takes the bytes.
+  async function sendVoice(blob: Blob, durationMs: number) {
+    try { await api("/send-voice", { method: "POST", body: { chatId: selected, mime: blob.type, bytes: blob.size, durationMs } }); await loadMessages(selected); void loadChats(); }
+    catch (e) { toast.error("Voice message not sent", { description: messageOf(e) }); }
+  }
+  async function send(payload: { text: string; attachments: Attachment[] }) {
     const chatId = selected;
-    const text = (drafts[chatId] ?? "").trim();
-    if (!text || !chatId || sendingId === chatId) return;
+    const text = payload.text.trim();
+    if (editing) { setEditing(null); setDrafts((d) => ({ ...d, [selected]: "" })); toast.info("Editing is not wired yet"); return; }
+    if ((!text && !payload.attachments.length) || !chatId || sendingId === chatId) return;
     const id = `pending-${++seq.current}`;
     const replyTo = replies[chatId] ?? null;
     setDrafts((d) => ({ ...d, [chatId]: "" }));
     setReplies((r) => ({ ...r, [chatId]: null }));
-    setPending((p) => [...p, { id, chatId, text, at: new Date().toISOString(), replyTo }]);
+    setPending((p) => [...p, { id, chatId, text: text || payload.attachments.map((a) => a.file.name).join(", "), at: new Date().toISOString(), replyTo }]);
     setSendingId(chatId);
     try {
-      await api("/send", { method: "POST", body: replyTo ? { chatId, text, replyTo: replyTo.id } : { chatId, text } });
+      if (payload.attachments.length) await api("/send-media", { method: "POST", body: { chatId, text, replyTo: replyTo?.id, files: payload.attachments.map((a) => ({ name: a.file.name, mime: a.file.type, bytes: a.file.size, kind: a.kind })) } });
+      else await api("/send", { method: "POST", body: replyTo ? { chatId, text, replyTo: replyTo.id } : { chatId, text } });
       await loadMessages(chatId);
       void loadChats();
     } catch (e) {
@@ -138,7 +151,7 @@ export default function InboxView({ plugin }: PluginViewProps) {
         {chat ? (
           <Conversation chat={chat} messages={shown} error={messagesError} now={now} draft={drafts[selected] ?? ""} sending={sendingId === selected} focusToken={`${selected}:${focusN}`}
             reply={replies[selected] ?? null} onReply={(m) => setReplies((r) => ({ ...r, [selected]: quoteOf(m) }))} onCancelReply={() => setReplies((r) => ({ ...r, [selected]: null }))}
-            onBack={() => setPane("list")} onRetry={() => void loadMessages(selected)} onDraft={(v) => setDrafts((d) => ({ ...d, [selected]: v }))} onSend={() => void send()} />
+            onBack={() => setPane("list")} onRetry={() => void loadMessages(selected)} onDraft={(v) => setDrafts((d) => ({ ...d, [selected]: v }))} onSend={(p) => void send(p)} onSendVoice={(b, d) => void sendVoice(b, d)} onExtra={(k) => toast.info(`${k[0].toUpperCase()}${k.slice(1)} is not wired yet`)} features={FEATURES} editing={editing} onCancelEdit={() => { setEditing(null); setDrafts((d) => ({ ...d, [selected]: "" })); }} />
         ) : <EmptyConversation session={phase.status.session} />}
       </div>
     </div>

@@ -1,6 +1,7 @@
 // One scoped stylesheet for the whole view. An installed plugin gets no Tailwind utilities of its own (the host only ships the classes the app uses),
 // so every rule here is plain CSS under .wa-root. It is unlayered, so it wins over the kit components' layered utilities.
 // The messenger palette (--wa-*) is the plugin's own, with a light and a dark set; fonts, focus ring and destructive colour come from the host.
+import { COMPOSER_CSS } from "./styles-composer";
 const DOODLE = "url(\"data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%27240%27%20viewBox%3D%270%200%20240%20240%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%271.6%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M18%2022h30a6%206%200%200%201%206%206v14a6%206%200%200%201-6%206H32l-8%207v-7h-6a6%206%200%200%201-6-6V28a6%206%200%200%201%206-6Z%27%2F%3E%3Cpath%20d%3D%27M100%2020l4%209%2010%201-7.500%206.500%202.500%209.500-9-5-9%205%202.500-9.500L86%2030l10-1Z%27%2F%3E%3Ccircle%20cx%3D%27176%27%20cy%3D%2734%27%20r%3D%2712%27%2F%3E%3Cpath%20d%3D%27M171%2031v.5M181%2031v.5M170.500%2038c3%204%208%204%2011%200%27%2F%3E%3Cpath%20d%3D%27M214%2078c-6-9-20-3-14%208%203%205%209%209%2014%2013%205-4%2011-8%2014-13%206-11-8-17-14-8Z%27%2F%3E%3Cpath%20d%3D%27M22%2096l34-12-12%2034-7-14Z%27%2F%3E%3Cpath%20d%3D%27M37%20104l19-20%27%2F%3E%3Cpath%20d%3D%27M96%2086c0-7%2010-11%2016-6%208-2%2014%206%2010%2013%205%205%201%2013-6%2013H98c-9%200-11-13-2-20Z%27%2F%3E%3Cpath%20d%3D%27M150%20108c6-6%2012%206%2018%200s12%206%2018%200%27%2F%3E%3Crect%20x%3D%2720%27%20y%3D%27150%27%20width%3D%2734%27%20height%3D%2726%27%20rx%3D%275%27%2F%3E%3Ccircle%20cx%3D%2737%27%20cy%3D%27163%27%20r%3D%277%27%2F%3E%3Cpath%20d%3D%27M30%20150l3-5h8l3%205%27%2F%3E%3Cpath%20d%3D%27M92%20176v-26l24-5v26%27%2F%3E%3Ccircle%20cx%3D%2786%27%20cy%3D%27176%27%20r%3D%276%27%2F%3E%3Ccircle%20cx%3D%27110%27%20cy%3D%27171%27%20r%3D%276%27%2F%3E%3Cpath%20d%3D%27M156%20150h30v32l-15-9-15%209Z%27%2F%3E%3Ccircle%20cx%3D%27216%27%20cy%3D%27160%27%20r%3D%2711%27%2F%3E%3Cpath%20d%3D%27M216%20153v7l5%203%27%2F%3E%3Cpath%20d%3D%27M40%20214a10%2010%200%201%201%2020%200c0%208-10%2016-10%2016s-10-8-10-16Z%27%2F%3E%3Ccircle%20cx%3D%2750%27%20cy%3D%27214%27%20r%3D%273%27%2F%3E%3Cpath%20d%3D%27M112%20206l8%208-8%208M132%20222h12%27%2F%3E%3Cpath%20d%3D%27M176%20226v-18m-9%209h18%27%2F%3E%3Ccircle%20cx%3D%27222%27%20cy%3D%27218%27%20r%3D%274%27%2F%3E%3Ccircle%20cx%3D%2772%27%20cy%3D%2762%27%20r%3D%273%27%2F%3E%3Ccircle%20cx%3D%27140%27%20cy%3D%2762%27%20r%3D%273%27%2F%3E%3Cpath%20d%3D%27M64%20128l6%206m0-6-6%206M200%20124l6%206m0-6-6%206%27%2F%3E%3C%2Fsvg%3E\")";
 
 export const CSS = `
@@ -78,7 +79,6 @@ export const CSS = `
 .wa-root .wa-btn:hover{background:var(--wa-hover);color:var(--wa-green-text)}
 .wa-quiet{margin:0;padding:32px 20px;text-align:center;color:var(--wa-sub);overflow-wrap:anywhere}
 .wa-spin{display:inline-block;width:22px;height:22px;border-radius:50%;border:2.5px solid color-mix(in srgb,var(--wa-green) 25%,transparent);border-top-color:var(--wa-green)}
-.wa-send .wa-spin{width:18px;height:18px;border-color:color-mix(in srgb,currentColor 35%,transparent);border-top-color:currentColor}
 .wa-empty{background:var(--wa-bar);border-bottom:6px solid var(--wa-green);gap:0}
 .wa-hero{display:grid;place-items:center;width:96px;height:96px;margin-bottom:26px;border-radius:50%;background:color-mix(in srgb,var(--wa-green) 14%,transparent);color:var(--wa-green)}
 .wa-hero svg{width:48px;height:48px;stroke-width:1.4}
@@ -151,21 +151,6 @@ export const CSS = `
 .wa-jump svg{width:22px;height:22px}
 .wa-jump i{position:absolute;top:-2px;left:-2px;width:12px;height:12px;border-radius:50%;background:var(--wa-badge)}
 
-/* composer */
-.wa-replybar{flex:1 0 100%;display:flex;align-items:center;gap:6px;margin-bottom:2px;--wa-qc:hsl(var(--wa-qh,150) 62% var(--wa-l))}
-.wa-replyto{flex:1;min-width:0;padding:6px 12px 7px;border-left:4px solid var(--wa-qc);border-radius:8px;background:color-mix(in srgb,var(--wa-text) 6%,var(--wa-field))}
-.wa-replyto span{display:block;font-size:13px;line-height:18px;color:var(--wa-sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wa-composer{flex:none;display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;padding:8px 12px 8px 16px;background:var(--wa-bar);border-top:1px solid var(--wa-line)}
-.wa-field{flex:1;min-width:0;display:flex;align-items:flex-end;min-height:42px;padding:0 16px;border-radius:21px;background:var(--wa-field);border:1px solid transparent}
-.wa-field:focus-within{border-color:color-mix(in srgb,var(--wa-green) 55%,transparent)}
-.wa-root .wa-field textarea{flex:1;min-width:0;display:block;margin:0;border:0;outline:0;resize:none;background:transparent;color:var(--wa-text);font:inherit;font-size:15px;line-height:20px;padding:10px 0;max-height:140px;overflow-y:auto;scrollbar-width:thin;box-shadow:none}
-.wa-root .wa-field textarea::placeholder{color:var(--wa-sub);opacity:1}
-.wa-root .wa-send{flex:none;display:inline-grid;place-items:center;width:42px;height:42px;padding:0;border:0;border-radius:50%;background:var(--wa-green);color:#fff;cursor:pointer;box-shadow:none;opacity:1}
-.wa-root .wa-send:hover{background:color-mix(in srgb,var(--wa-green) 88%,#000)}
-.wa-root .wa-send:disabled{background:transparent;color:var(--wa-icon);opacity:.55;cursor:default}
-.wa-root .wa-send:focus-visible{outline-offset:2px}
-.wa-root .wa-send svg{width:22px;height:22px}
-
 @keyframes wa-rot{to{transform:rotate(360deg)}}
 .wa-spin{animation:wa-rot .8s linear infinite}
 @media (prefers-reduced-motion:no-preference){
@@ -183,10 +168,9 @@ export const CSS = `
   .wa-col{padding:0 14px}
   .wa-msg{margin-left:-14px;margin-right:-14px;padding:0 14px}
   .wa-bubble{max-width:82%}
-  .wa-composer{padding:6px 8px}
 }
 @media (forced-colors:active){
-  .wa-bubble,.wa-day,.wa-field{border:1px solid CanvasText}
+  .wa-bubble,.wa-day{border:1px solid CanvasText}
   .wa-row[aria-current="true"]{outline:2px solid Highlight;outline-offset:-2px}
 }
-`;
+` + COMPOSER_CSS;
