@@ -1,0 +1,137 @@
+{
+ "note": "Shape of a real inbox (which ids wrote in which order); numbers, ids and texts are synthetic.",
+ "chats": [
+  {
+   "chatId": "23000000000001@lid",
+   "messages": [
+    {
+     "id": "false_23000000000001@lid_FIX000",
+     "fromMe": false,
+     "sender": "23000000000001@lid",
+     "body": "m00",
+     "sentAt": "2026-11-08T18:11:35.000Z"
+    },
+    {
+     "id": "false_23000000000001@lid_FIX001",
+     "fromMe": false,
+     "sender": "23000000000001@lid",
+     "body": "m01",
+     "sentAt": "2026-11-09T02:51:37.000Z"
+    },
+    {
+     "id": "false_23000000000001@lid_FIX002",
+     "fromMe": false,
+     "sender": "23000000000001@lid",
+     "body": "m02",
+     "sentAt": "2026-11-09T14:46:53.000Z"
+    },
+    {
+     "id": "out-1700000000003-fix03",
+     "fromMe": true,
+     "sender": "me",
+     "body": "m03",
+     "sentAt": "2026-11-09T19:54:00.014Z"
+    },
+    {
+     "id": "false_23000000000001@lid_FIX004",
+     "fromMe": false,
+     "sender": "23000000000001@lid",
+     "body": "m04",
+     "sentAt": "2026-11-09T21:27:57.000Z"
+    },
+    {
+     "id": "false_23000000000001@lid_FIX005",
+     "fromMe": false,
+     "sender": "23000000000001@lid",
+     "body": "m05",
+     "sentAt": "2026-11-09T21:56:45.000Z"
+    },
+    {
+     "id": "false_23000000000001@lid_FIX006",
+     "fromMe": false,
+     "sender": "23000000000001@lid",
+     "body": "m06",
+     "sentAt": "2026-11-09T21:57:13.000Z"
+    },
+    {
+     "id": "false_23000000000001@lid_FIX007",
+     "fromMe": false,
+     "sender": "23000000000001@lid",
+     "body": "m07",
+     "sentAt": "2026-11-09T21:57:18.000Z"
+    },
+    {
+     "id": "false_23000000000001@lid_FIX008",
+     "fromMe": false,
+     "sender": "23000000000001@lid",
+     "body": "m08",
+     "sentAt": "2026-11-09T21:57:25.000Z"
+    }
+   ]
+  },
+  {
+   "chatId": "553488880000@c.us",
+   "messages": [
+    {
+     "id": "out-1700000001000-fix10",
+     "fromMe": true,
+     "sender": "me",
+     "body": "m10",
+     "sentAt": "2026-11-08T15:24:07.914Z"
+    },
+    {
+     "id": "out-1700000001001-fix11",
+     "fromMe": true,
+     "sender": "me",
+     "body": "m11",
+     "sentAt": "2026-11-09T21:26:05.886Z"
+    },
+    {
+     "id": "out-1700000001002-fix12",
+     "fromMe": true,
+     "sender": "me",
+     "body": "m12",
+     "sentAt": "2026-11-09T21:32:24.153Z"
+    }
+   ]
+  },
+  {
+   "chatId": "5534988880000@c.us",
+   "messages": [
+    {
+     "id": "out-1700000002000-fix20",
+     "fromMe": true,
+     "sender": "me",
+     "body": "m20",
+     "sentAt": "2026-11-08T15:23:31.850Z"
+    },
+    {
+     "id": "out-1700000002001-fix21",
+     "fromMe": true,
+     "sender": "me",
+     "body": "m21",
+     "sentAt": "2026-11-09T19:53:50.419Z"
+    }
+   ]
+  },
+  {
+   "chatId": "109000000000002@lid",
+   "messages": [
+    {
+     "id": "false_109000000000002@lid_FIX300",
+     "fromMe": false,
+     "sender": "109000000000002@lid",
+     "body": "m30",
+     "sentAt": "2026-11-09T11:35:41.000Z"
+    },
+    {
+     "id": "false_109000000000002@lid_FIX301",
+     "fromMe": false,
+     "sender": "109000000000002@lid",
+     "body": "m31",
+     "sentAt": "2026-11-09T14:35:53.000Z"
+    }
+   ]
+  }
+ ]
+}
