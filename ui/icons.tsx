@@ -20,4 +20,11 @@ export const IconLock = (p: P) => <Svg {...p}><rect x="5.5" y="10.5" width="13" 
 export const IconChat = (p: P) => <Svg {...p}><path d="M5 5.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7.5L7 21v-3.500H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" /><path d="M8 10h8M8 13.500h5" /></Svg>;
 export const IconReply = (p: P) => <Svg {...p}><path d="M10 8.500V5L3.500 11.500 10 18v-3.600c4.600 0 7.800 1.400 10.500 5.100-.900-5.900-4.300-10.300-10.500-11Z" /></Svg>;
 export const IconX = (p: P) => <Svg {...p}><path d="M6 6l12 12M18 6 6 18" /></Svg>;
+export const IconChecks = (p: P) => <Svg {...p}><path d="m2.5 12.5 4 4L15 8" /><path d="m11 16.5 1.200 1.200L21.500 8" /></Svg>;
+export const IconArchive = (p: P) => <Svg {...p}><rect x="3.500" y="4.500" width="17" height="4" rx="1" /><path d="M5 8.500V18a1.500 1.500 0 0 0 1.500 1.500h11A1.500 1.500 0 0 0 19 18V8.500" /><path d="M10 12.500h4" /></Svg>;
+export const IconBan = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8" /><path d="m6.500 6.500 11 11" /></Svg>;
+export const IconMuted = (p: P) => <Svg {...p}><path d="M4 9.500v5h3.500L12 18.500v-13L7.500 9.500H4Z" /><path d="m16 9.500 4.500 5M20.500 9.500 16 14.500" /></Svg>;
+export const IconPinned = (p: P) => <Svg {...p}><path d="M9 4h6l-1 5.500 3 3.500H7l3-3.500L9 4Z" /><path d="M12 13v7" /></Svg>;
+export const IconDots = (p: P) => <Svg {...p}><path d="M12 5.500v.1M12 12v.1M12 18.500v.1" strokeWidth={2.600} /></Svg>;
+export const IconInfo = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8.500" /><path d="M12 11v5.500" /><path d="M12 7.800v.1" strokeWidth={2.400} /></Svg>;
 export const Spinner = () => <span className="wa-spin" aria-hidden="true" />;
