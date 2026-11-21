@@ -6,6 +6,7 @@ import { ChatList } from "./chat-list";
 import type { Attachment, ComposerFeatures } from "./composer";
 import { Conversation, EmptyConversation } from "./conversation";
 import { CSS } from "./styles";
+import MoreDemo from "./more-demo"; // more-wiring
 
 interface Status { configured: boolean; missingSettings: string[]; missingSecrets: string[]; session: string }
 type Phase = { kind: "loading" } | { kind: "error"; message: string } | { kind: "forbidden" } | { kind: "ready"; status: Status };
@@ -18,7 +19,8 @@ const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Something w
 const visible = () => typeof document === "undefined" || document.visibilityState === "visible";
 
 /** Two-pane WhatsApp inbox. Sending is the user's own click or Enter; a failed send puts the text back in the composer. */
-export default function InboxView({ plugin }: PluginViewProps) {
+export default function InboxView(props: PluginViewProps) { return typeof location !== "undefined" && new URLSearchParams(location.search).get("demo") === "more" ? <MoreDemo {...props} /> : <InboxMain {...props} />; } // more-wiring
+function InboxMain({ plugin }: PluginViewProps) {
   const api = usePluginApi(plugin.id);
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [chats, setChats] = useState<Chat[] | null>(null);
