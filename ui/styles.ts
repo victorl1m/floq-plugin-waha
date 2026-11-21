@@ -122,6 +122,28 @@ export const CSS = `
 .wa-media-ico svg{width:19px;height:19px}
 .wa-media b{display:block;font-size:14px;font-weight:500;line-height:19px}
 .wa-media span>span{display:block;font-size:12.5px;line-height:16px;color:var(--wa-meta)}
+.wa-quote{display:block;width:calc(100% + 8px);min-width:140px;margin:-1px -4px 5px;padding:5px 10px 6px 9px;border:0;border-left:4px solid var(--wa-qc);border-radius:6px;background:color-mix(in srgb,var(--wa-text) 7%,transparent);color:inherit;font:inherit;text-align:left;white-space:normal;cursor:pointer;
+  --wa-qc:hsl(var(--wa-qh,150) 62% var(--wa-l))}
+.wa-quote:disabled{cursor:default}
+.wa-quote:not(:disabled):hover{background:color-mix(in srgb,var(--wa-text) 11%,transparent)}
+.wa-quote:focus-visible{outline:2px solid var(--wa-green);outline-offset:1px}
+.wa-quote-me{--wa-qc:var(--wa-green-text)}
+.wa-mine .wa-quote-me{--wa-qc:color-mix(in srgb,var(--wa-green-text) 70%,var(--wa-text))}
+.wa-quote b,.wa-replyto b{display:block;font-size:12.8px;font-weight:500;line-height:19px;color:var(--wa-qc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wa-quote span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:18px;color:var(--wa-meta);overflow-wrap:anywhere}
+.wa-mine .wa-quote span{color:color-mix(in srgb,var(--wa-text) 66%,var(--wa-out))}
+.wa-quote svg,.wa-replyto svg{display:inline-block;width:14px;height:14px;margin:-2px 4px 0 0;vertical-align:middle}
+.wa-act{position:absolute;top:50%;width:28px;height:28px;margin-top:-14px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--wa-text) 12%,transparent);color:var(--wa-icon);cursor:pointer;opacity:0}
+.wa-theirs .wa-act{left:calc(100% + 8px)}
+.wa-mine .wa-act{right:calc(100% + 8px)}
+.wa-act svg{width:16px;height:16px}
+.wa-msg:hover .wa-act,.wa-act:focus-visible{opacity:1}
+.wa-act:hover{background:color-mix(in srgb,var(--wa-text) 20%,transparent);color:var(--wa-text)}
+.wa-act:focus-visible{outline:2px solid var(--wa-green);outline-offset:1px}
+@media (hover:none){.wa-act:not(:focus-visible){display:none}}
+@keyframes wa-flash{0%,55%{background:color-mix(in srgb,var(--wa-green) 22%,transparent)}100%{background:transparent}}
+.wa-msg.wa-flash{animation:wa-flash 1.5s ease-out}
+.wa-msg{margin-left:calc(-1 * clamp(16px,6.5%,72px));margin-right:calc(-1 * clamp(16px,6.5%,72px));padding:0 clamp(16px,6.5%,72px);max-width:none}
 .wa-unsupported{font-style:italic;color:var(--wa-meta)}
 .wa-note{align-self:center;margin:auto;padding:8px 14px;border-radius:8px;background:var(--wa-chip);color:var(--wa-sub);font-size:13px;box-shadow:var(--wa-shadow)}
 .wa-jump{position:absolute;right:16px;bottom:14px;width:42px;height:42px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;background:var(--wa-in);color:var(--wa-icon);cursor:pointer;box-shadow:0 1px 3px rgba(11,20,26,.3)}
@@ -130,7 +152,10 @@ export const CSS = `
 .wa-jump i{position:absolute;top:-2px;left:-2px;width:12px;height:12px;border-radius:50%;background:var(--wa-badge)}
 
 /* composer */
-.wa-composer{flex:none;display:flex;align-items:flex-end;gap:8px;padding:8px 12px 8px 16px;background:var(--wa-bar);border-top:1px solid var(--wa-line)}
+.wa-replybar{flex:1 0 100%;display:flex;align-items:center;gap:6px;margin-bottom:2px;--wa-qc:hsl(var(--wa-qh,150) 62% var(--wa-l))}
+.wa-replyto{flex:1;min-width:0;padding:6px 12px 7px;border-left:4px solid var(--wa-qc);border-radius:8px;background:color-mix(in srgb,var(--wa-text) 6%,var(--wa-field))}
+.wa-replyto span{display:block;font-size:13px;line-height:18px;color:var(--wa-sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wa-composer{flex:none;display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;padding:8px 12px 8px 16px;background:var(--wa-bar);border-top:1px solid var(--wa-line)}
 .wa-field{flex:1;min-width:0;display:flex;align-items:flex-end;min-height:42px;padding:0 16px;border-radius:21px;background:var(--wa-field);border:1px solid transparent}
 .wa-field:focus-within{border-color:color-mix(in srgb,var(--wa-green) 55%,transparent)}
 .wa-root .wa-field textarea{flex:1;min-width:0;display:block;margin:0;border:0;outline:0;resize:none;background:transparent;color:var(--wa-text);font:inherit;font-size:15px;line-height:20px;padding:10px 0;max-height:140px;overflow-y:auto;scrollbar-width:thin;box-shadow:none}
@@ -156,6 +181,7 @@ export const CSS = `
   .wa-root .wa-back{display:inline-grid}
   .wa-chat-head{padding:0 12px}
   .wa-col{padding:0 14px}
+  .wa-msg{margin-left:-14px;margin-right:-14px;padding:0 14px}
   .wa-bubble{max-width:82%}
   .wa-composer{padding:6px 8px}
 }

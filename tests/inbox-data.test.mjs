@@ -90,7 +90,7 @@ test("parseWebhook: malformed _data never throws; existing fields unchanged", ()
   const m = parseWebhook(ev({ ...base, from: "5511999999999@c.us", fromMe: false, source: "APP", hasMedia: true }));
   assert.deepEqual({ ...m, sentAt: m.sentAt.toISOString() }, {
     source: "app", session: "default", chatId: "5511999999999@c.us", msgId: "m1", fromMe: false, sender: "5511999999999@c.us", senderName: "", senderPhone: "5511999999999",
-    body: "hi", hasMedia: true, sentAt: new Date(1700000000000).toISOString(),
+    body: "hi", hasMedia: true, sentAt: new Date(1700000000000).toISOString(), reply: null, links: [],
   });
   assert.equal(parseWebhook(ev({ ...base, from: "a@c.us" }, "other")), null);
 });
@@ -123,11 +123,12 @@ test("GET /messages includes senderName", async () => {
 test("POST /read validates, is owner-only and writes for the right user and chat", async () => {
   const h = harness();
   assert.deepEqual(await h.routes["POST /read"]({ userId: "u1", body: { chatId: "5511999999999@c.us" } }), { ok: true });
-  assert.match(h.queries[0].sql, /chat_reads/); assert.deepEqual(h.queries[0].params, ["u1", "5511999999999@c.us"]);
+  const reads = () => h.queries.filter((q) => /chat_reads/.test(q.sql));
+  assert.equal(reads().length, 1); assert.deepEqual(reads()[0].params, ["u1", "5511999999999@c.us"]);
   await assert.rejects(h.routes["POST /read"]({ userId: "u1", body: { chatId: "bad id!" } }), { status: 400 });
   await assert.rejects(h.routes["POST /read"]({ userId: "u1", body: {} }), { status: 400 });
   await assert.rejects(h.routes["POST /read"]({ userId: "u2", body: { chatId: "5511999999999@c.us" } }), { status: 403 });
-  assert.equal(h.queries.length, 1);
+  assert.equal(reads().length, 1);
   assert.equal(h.internal["/read"], undefined);
 });
 

@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PluginPage, PluginState, toast, usePluginApi, usePluginEvent } from "@/plugins/kit";
 import type { PluginViewProps } from "@/plugins/sdk";
-import type { Chat, Message } from "../shared/chat";
+import { quoteOf, type Chat, type Message, type Quote } from "../shared/chat";
 import { ChatList } from "./chat-list";
 import { Conversation, EmptyConversation } from "./conversation";
 import { CSS } from "./styles";
 
 interface Status { configured: boolean; missingSettings: string[]; missingSecrets: string[]; session: string }
 type Phase = { kind: "loading" } | { kind: "error"; message: string } | { kind: "forbidden" } | { kind: "ready"; status: Status };
-interface Pending { id: string; chatId: string; text: string; at: string }
+interface Pending { id: string; chatId: string; text: string; at: string; replyTo: Quote | null }
 
 const statusOf = (e: unknown) => (e as { status?: number } | null)?.status;
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
@@ -28,6 +28,7 @@ export default function InboxView({ plugin }: PluginViewProps) {
   const [messagesError, setMessagesError] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<Pending[]>([]);
+  const [replies, setReplies] = useState<Record<string, Quote | null>>({});
   const [sendingId, setSendingId] = useState("");
   const [focusN, setFocusN] = useState(0);
   const [now, setNow] = useState(() => new Date());
@@ -98,15 +99,18 @@ export default function InboxView({ plugin }: PluginViewProps) {
     const text = (drafts[chatId] ?? "").trim();
     if (!text || !chatId || sendingId === chatId) return;
     const id = `pending-${++seq.current}`;
+    const replyTo = replies[chatId] ?? null;
     setDrafts((d) => ({ ...d, [chatId]: "" }));
-    setPending((p) => [...p, { id, chatId, text, at: new Date().toISOString() }]);
+    setReplies((r) => ({ ...r, [chatId]: null }));
+    setPending((p) => [...p, { id, chatId, text, at: new Date().toISOString(), replyTo }]);
     setSendingId(chatId);
     try {
-      await api("/send", { method: "POST", body: { chatId, text } });
+      await api("/send", { method: "POST", body: replyTo ? { chatId, text, replyTo: replyTo.id } : { chatId, text } });
       await loadMessages(chatId);
       void loadChats();
     } catch (e) {
       setDrafts((d) => (d[chatId]?.trim() ? d : { ...d, [chatId]: text }));
+      setReplies((r) => (r[chatId] ? r : { ...r, [chatId]: replyTo }));
       setFocusN((n) => n + 1);
       toast.error("Message not sent", { description: messageOf(e) });
     } finally {
@@ -123,7 +127,7 @@ export default function InboxView({ plugin }: PluginViewProps) {
   }
 
   const chat = selected ? chats?.find((c) => c.chatId === selected) ?? { chatId: selected, lastBody: "", lastAt: "", total: 0 } : null;
-  const shown = messages && [...messages, ...pending.filter((p) => p.chatId === selected).map((p): Message => ({ id: p.id, fromMe: true, sender: "", body: p.text, hasMedia: false, sentAt: p.at, pending: true }))];
+  const shown = messages && [...messages, ...pending.filter((p) => p.chatId === selected).map((p): Message => ({ id: p.id, fromMe: true, sender: "", body: p.text, hasMedia: false, sentAt: p.at, pending: true, replyTo: p.replyTo }))];
 
   return (
     <div className="wa-root" data-pane={pane}>
@@ -133,6 +137,7 @@ export default function InboxView({ plugin }: PluginViewProps) {
           onQuery={setQuery} onSelect={(id) => { setSelected(id); setPane("chat"); }} onRefresh={() => void loadChats()} />
         {chat ? (
           <Conversation chat={chat} messages={shown} error={messagesError} now={now} draft={drafts[selected] ?? ""} sending={sendingId === selected} focusToken={`${selected}:${focusN}`}
+            reply={replies[selected] ?? null} onReply={(m) => setReplies((r) => ({ ...r, [selected]: quoteOf(m) }))} onCancelReply={() => setReplies((r) => ({ ...r, [selected]: null }))}
             onBack={() => setPane("list")} onRetry={() => void loadMessages(selected)} onDraft={(v) => setDrafts((d) => ({ ...d, [selected]: v }))} onSend={() => void send()} />
         ) : <EmptyConversation session={phase.status.session} />}
       </div>

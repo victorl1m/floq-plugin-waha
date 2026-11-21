@@ -5,7 +5,9 @@ export interface Chat {
   chatId: string; kind?: "user" | "group" | "other"; name?: string | null; phone?: string | null;
   lastBody: string; lastFromMe?: boolean; lastHasMedia?: boolean; lastAt: string; total: number; unread?: number;
 }
-export interface Message { pending?: boolean; id: string; fromMe: boolean; sender: string; senderName?: string; body: string; hasMedia: boolean; sentAt: string }
+/** The message a reply quotes. `id` is the quoted message's id when it is loaded in this conversation, else "". */
+export interface Quote { id: string; body: string; hasMedia?: boolean; fromMe: boolean; sender: string; senderName?: string }
+export interface Message { pending?: boolean; id: string; fromMe: boolean; sender: string; senderName?: string; body: string; hasMedia: boolean; sentAt: string; replyTo?: Quote | null }
 
 type ChatLike = Pick<Chat, "chatId"> & Partial<Chat>;
 
@@ -64,6 +66,25 @@ export function previewText(c: ChatLike): { prefix: string; text: string; media:
   if (text) return { prefix, text, media: false };
   return c.lastHasMedia ? { prefix, text: "Photo or file", media: true } : { prefix, text: "No text", media: false };
 }
+
+/** Who wrote a quoted message: "You", their name, their number, or the chat's own name in a 1:1 chat. Never a raw id. */
+export function quoteAuthor(q: Pick<Quote, "fromMe" | "sender" | "senderName">, chat: ChatLike): string {
+  if (q.fromMe) return "You";
+  const name = (q.senderName ?? "").trim();
+  if (name && !name.includes("@")) return name;
+  if (kindOf(chat) !== "group") return displayName(chat);
+  const digits = chatPhoneDigits({ chatId: q.sender });
+  return digits ? formatPhoneDisplay(digits) : "Unknown contact";
+}
+
+/** One line for the quoted block. */
+export function quoteText(q: Pick<Quote, "body" | "hasMedia">): string {
+  const text = (q.body ?? "").replace(/\s+/g, " ").trim();
+  return text || (q.hasMedia ? "Photo or file" : "Message");
+}
+
+/** The quote a reply to `m` carries. */
+export const quoteOf = (m: Message): Quote => ({ id: m.id, body: m.body, hasMedia: m.hasMedia, fromMe: m.fromMe, sender: m.fromMe ? "" : m.sender, senderName: m.senderName ?? "" });
 
 const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 const daysAgo = (d: Date, now: Date) => Math.round((dayStart(now) - dayStart(d)) / 86_400_000);

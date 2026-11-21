@@ -30,6 +30,10 @@ Returns `{"status":"sent"}`. Max 4096 characters. It only ever goes to the user'
 floq plugin call waha send --json '{"chatId":"5511999999999@c.us","text":"Hello! The report is ready."}'
 ```
 
+To answer one specific message, add `"replyTo":"<id of that message from the messages call>"`: WhatsApp then shows it as a quoted reply. Messages that are replies carry `replyTo` (who and what they quote).
+
+A contact WhatsApp addresses both by phone (`...@c.us`) and by `...@lid` is one chat here: use the `chatId` that `chats` returns.
+
 Floq asks the user first and waits. You get `{"status":"sent"}`, or `denied` / `expired` (nothing was sent: do not retry unless asked). If the user enabled "Always allow AI to send messages", it goes out at once (`sendNeedsApproval` is false in `me`); still never message someone on your own initiative.
 
 Never ask for the WAHA key or webhook secret.

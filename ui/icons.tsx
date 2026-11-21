@@ -18,4 +18,6 @@ export const IconCheck = (p: P) => <Svg {...p}><path d="m5 12.5 4.5 4.5L19 7.5" 
 export const IconClock = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8" /><path d="M12 8v4.2l2.6 1.6" /></Svg>;
 export const IconLock = (p: P) => <Svg {...p}><rect x="5.5" y="10.5" width="13" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" /></Svg>;
 export const IconChat = (p: P) => <Svg {...p}><path d="M5 5.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7.5L7 21v-3.500H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" /><path d="M8 10h8M8 13.500h5" /></Svg>;
+export const IconReply = (p: P) => <Svg {...p}><path d="M10 8.500V5L3.500 11.500 10 18v-3.600c4.600 0 7.800 1.400 10.500 5.100-.900-5.900-4.300-10.300-10.500-11Z" /></Svg>;
+export const IconX = (p: P) => <Svg {...p}><path d="M6 6l12 12M18 6 6 18" /></Svg>;
 export const Spinner = () => <span className="wa-spin" aria-hidden="true" />;

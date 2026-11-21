@@ -43,4 +43,23 @@ export const migrations: PluginMigration[] = [
       INSERT INTO {{p}}chat_reads (user_id, chat_id, read_at) SELECT DISTINCT user_id, chat_id, now() FROM {{p}}messages;
     `,
   },
+  {
+    // Replies (the quoted message travels with the row) and the lid <-> phone pairs that make two addresses one chat.
+    id: "003_replies_lids",
+    sql: `
+      ALTER TABLE {{p}}messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT '';
+      ALTER TABLE {{p}}messages ADD COLUMN reply_body TEXT NOT NULL DEFAULT '';
+      ALTER TABLE {{p}}messages ADD COLUMN reply_sender TEXT NOT NULL DEFAULT '';
+      ALTER TABLE {{p}}messages ADD COLUMN reply_media BOOLEAN NOT NULL DEFAULT FALSE;
+      CREATE TABLE {{p}}lid_map (
+        user_id TEXT NOT NULL,
+        lid TEXT NOT NULL,
+        pn TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, lid)
+      );
+      CREATE INDEX {{p}}lid_map_pn_idx ON {{p}}lid_map (user_id, pn);
+      INSERT INTO {{p}}lid_map (user_id, lid, pn) SELECT user_id, chat_id, phone || '@c.us' FROM {{p}}contacts WHERE chat_id LIKE '%@lid' AND phone ~ '^[0-9]{8,15}$';
+    `,
+  },
 ];

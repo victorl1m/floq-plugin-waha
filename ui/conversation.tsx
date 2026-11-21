@@ -1,5 +1,5 @@
 import { Button, resolvePluginIcon } from "@/plugins/kit";
-import { displayName, subtitle, type Chat, type Message } from "../shared/chat";
+import { displayName, subtitle, type Chat, type Message, type Quote } from "../shared/chat";
 import { Avatar } from "./avatar";
 import { Composer } from "./composer";
 import { IconAlert, IconArrowLeft, IconLock, Spinner } from "./icons";
@@ -20,12 +20,12 @@ export function EmptyConversation({ session }: { session: string }) {
 }
 
 interface Props {
-  chat: Chat; messages: Message[] | null; error: string; now: Date; draft: string; sending: boolean; focusToken: string;
-  onBack: () => void; onRetry: () => void; onDraft: (v: string) => void; onSend: () => void;
+  chat: Chat; messages: Message[] | null; error: string; now: Date; draft: string; sending: boolean; focusToken: string; reply: Quote | null;
+  onReply: (m: Message) => void; onCancelReply: () => void; onBack: () => void; onRetry: () => void; onDraft: (v: string) => void; onSend: () => void;
 }
 
 /** Header, message log (or its loading / error / empty state) and composer for one chat. */
-export function Conversation({ chat, messages, error, now, draft, sending, focusToken, onBack, onRetry, onDraft, onSend }: Props) {
+export function Conversation({ chat, messages, error, now, draft, sending, focusToken, reply, onReply, onCancelReply, onBack, onRetry, onDraft, onSend }: Props) {
   const name = displayName(chat), sub = subtitle(chat);
   return (
     <section className="wa-pane wa-chat-pane" aria-label="Conversation">
@@ -41,9 +41,9 @@ export function Conversation({ chat, messages, error, now, draft, sending, focus
       ) : messages.length === 0 ? (
         <div className="wa-center wa-wall"><span className="wa-note">No messages in this chat yet</span></div>
       ) : (
-        <MessageLog key={chat.chatId} chat={chat} messages={messages} now={now} />
+        <MessageLog key={chat.chatId} chat={chat} messages={messages} now={now} onReply={onReply} />
       )}
-      <Composer value={draft} onChange={onDraft} onSend={onSend} sending={sending} placeholder="Type a message" focusToken={focusToken} />
+      <Composer value={draft} onChange={onDraft} onSend={onSend} sending={sending} placeholder="Type a message" focusToken={focusToken} chat={chat} reply={reply} onCancelReply={onCancelReply} />
     </section>
   );
 }

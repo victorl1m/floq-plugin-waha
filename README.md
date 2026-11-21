@@ -16,6 +16,12 @@ npm run build     # dist/waha-<version>.floqpkg.json + dist/catalog-entry.json, 
 Release: bump `version` in plugin.json, `npm run build`, commit catalog-entry.json, tag `v<version>`, push the tag. Then copy the entry into the catalog repo.
 Refresh the vendored parsers with `scripts/sync-vendor.sh /path/to/Floq`.
 
+## Inbox
+- A two-pane, WhatsApp-style messenger with its own light and dark palette (scoped `wa-*` stylesheet: installed plugins get no Tailwind utilities from the host).
+- **Reply to a message:** hover a bubble (or press and hold, double click, or Tab to its Reply button), write, send. Quoted messages show on incoming replies too; click a quote to jump to the original.
+- **One chat per contact:** WhatsApp addresses some contacts by `@lid`. The plugin learns the lid/phone pair from webhooks and from WAHA's lids API and shows both addresses as one chat under the phone number.
+- UI check in a real browser: Floq's `e2e/waha-inbox.spec.ts` mounts the built package (`WAHA_PLUGIN_DIR=<this checkout> npx playwright test e2e/waha-inbox.spec.ts`).
+
 ## What the AI can do
 - Read the inbox.
 - **message-me:** send plain text to your own saved number, no approval (setting "Let the AI message me freely", on once a number is saved; 30 per minute loop guard).
