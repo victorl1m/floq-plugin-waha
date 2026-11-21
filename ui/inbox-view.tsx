@@ -10,6 +10,13 @@ import { ChatMenu } from "./chat-menu";
 import { InfoPanel } from "./info-panel";
 import { NewChatDialog } from "./new-chat";
 import { IconNewChat } from "./icons-people";
+import { IconMegaphone, IconStatus } from "./icons-more";
+import { CallBanner } from "./call-banner";
+import { ChannelsView } from "./channels-view";
+import { LabelChips, LabelFilter, LabelPicker } from "./labels";
+import { PresenceLine } from "./presence";
+import { StatusView } from "./status-view";
+import { subtitle } from "../shared/chat";
 import { kindOfFile, mentionsIn, type Attachment } from "./composer";
 import { WaContext, errorCode, errorStatus, errorText, type Api, type Wa } from "./context";
 import { Conversation, EmptyConversation, type ConversationHandlers } from "./conversation";
@@ -61,6 +68,8 @@ export default function InboxView({ plugin }: PluginViewProps) {
   const [focusN, setFocusN] = useState(0);
   const [info, setInfo] = useState(false);
   const [newChat, setNewChat] = useState(false);
+  const [side, setSide] = useState<"" | "status" | "channels">("");
+  const [label, setLabel] = useState("");
   const [now, setNow] = useState(() => new Date());
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -294,20 +303,28 @@ export default function InboxView({ plugin }: PluginViewProps) {
           <ChatList chats={showArchived ? archived : chats} error={chatsError} selected={selected} query={query} now={now} refreshing={refreshing} archivedCount={archivedCount} showArchived={showArchived}
             onArchived={(v) => { setShowArchived(v); if (v) void loadChats(); }} onQuery={setQuery} onSelect={(id) => openChat(id)} onRefresh={() => void loadChats()}
             rowMenu={(c) => <ChatMenu chat={c} onInfo={() => { openChat(c.chatId); setInfo(true); }} onGone={() => { if (selectedRef.current === c.chatId) closeChat(); }} />}
-            actions={(
+            rowExtra={(c) => <LabelChips ids={c.labels} max={1} />}
+            filterExtra={features.labels ? <LabelFilter value={label} onChange={setLabel} /> : null}
+            passes={label ? (c) => (c.labels ?? []).includes(label) : undefined}
+            overlay={side === "status" ? <StatusView onClose={() => setSide("")} /> : side === "channels" ? <ChannelsView onClose={() => setSide("")} /> : null}
+            actions={(<>
+              {features.status && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="wa-iconbtn" aria-label="Status" onClick={() => setSide("status")}><IconStatus /></Button></TooltipTrigger><TooltipContent>Status</TooltipContent></Tooltip>}
+              {features.channels && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="wa-iconbtn" aria-label="Channels" onClick={() => setSide("channels")}><IconMegaphone /></Button></TooltipTrigger><TooltipContent>Channels</TooltipContent></Tooltip>}
               <Tooltip>
                 <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="wa-iconbtn" aria-label="New chat" onClick={() => setNewChat(true)}><IconNewChat /></Button></TooltipTrigger>
                 <TooltipContent>New chat</TooltipContent>
               </Tooltip>
-            )} />
+            </>)} />
           {chat ? (
             <Conversation chat={chat} messages={shown} hasMore={hasMore} error={messagesError} now={now} draft={drafts[selected] ?? ""} sending={sendingId === selected} focusToken={`${selected}:${focusN}`}
               reply={replies[selected] ?? null} editing={editing} handlers={handlers}
-              onInfo={() => setInfo((v) => !v)} menu={<ChatMenu chat={chat} onInfo={() => setInfo(true)} onGone={closeChat} />} />
+              onInfo={() => setInfo((v) => !v)} menu={<>{features.labels && chat.kind !== "group" && <LabelPicker chat={chat} />}<ChatMenu chat={chat} onInfo={() => setInfo(true)} onGone={closeChat} /></>}
+              presence={features.presence && !chat.isSelf ? <PresenceLine chat={chat} fallback={subtitle(chat)} /> : undefined} />
           ) : <EmptyConversation session={phase.status.session} />}
           {chat && info && <InfoPanel key={chat.chatId} chat={chat} onClose={() => setInfo(false)} />}
         </div>
         <NewChatDialog open={newChat} onOpenChange={setNewChat} />
+        {features.calls && <CallBanner />}
       </div>
     </WaContext.Provider>
   );

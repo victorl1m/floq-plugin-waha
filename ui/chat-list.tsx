@@ -9,7 +9,7 @@ interface Props {
   chats: Chat[] | null; error: string; selected: string; query: string; now: Date; refreshing: boolean; archivedCount: number; showArchived: boolean;
   onQuery: (q: string) => void; onSelect: (id: string) => void; onRefresh: () => void; onArchived: (show: boolean) => void;
   /** Buttons for the header (new chat, status, channels, account menu) and extras for the filter row and each row (labels, row menu). */
-  actions?: ReactNode; banner?: ReactNode; filterExtra?: ReactNode; rowMenu?: (chat: Chat) => ReactNode; rowExtra?: (chat: Chat) => ReactNode; passes?: (chat: Chat) => boolean;
+  actions?: ReactNode; banner?: ReactNode; overlay?: ReactNode; filterExtra?: ReactNode; rowMenu?: (chat: Chat) => ReactNode; rowExtra?: (chat: Chat) => ReactNode; passes?: (chat: Chat) => boolean;
 }
 
 type Filter = "all" | "unread" | "groups";
@@ -56,7 +56,7 @@ function Row({ chat, selected, now, onSelect, menu, extra }: { chat: Chat; selec
 }
 
 /** Left pane: header with actions, search pill, filter chips, the archived entry and the chat rows (or a loading / error / empty state). */
-export function ChatList({ chats, error, selected, query, now, refreshing, archivedCount, showArchived, onQuery, onSelect, onRefresh, onArchived, actions, banner, filterExtra, rowMenu, rowExtra, passes: extraPass }: Props) {
+export function ChatList({ chats, error, selected, query, now, refreshing, archivedCount, showArchived, onQuery, onSelect, onRefresh, onArchived, actions, banner, overlay, filterExtra, rowMenu, rowExtra, passes: extraPass }: Props) {
   const [filter, setFilter] = useState<Filter>("all");
   const shown = chats?.filter((c) => passes(c, filter) && matchesQuery(c, query) && (extraPass ? extraPass(c) : true)) ?? [];
   return (
@@ -96,6 +96,7 @@ export function ChatList({ chats, error, selected, query, now, refreshing, archi
       ) : (
         <div className="wa-scroll"><ul className="wa-list" role="list">{shown.map((c) => <Row key={c.chatId} chat={c} selected={selected === c.chatId} now={now} onSelect={() => onSelect(c.chatId)} menu={rowMenu?.(c)} extra={rowExtra?.(c)} />)}</ul></div>
       )}
+      {overlay && <div className="wa-overlay">{overlay}</div>}
     </section>
   );
 }
