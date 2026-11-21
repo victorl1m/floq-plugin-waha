@@ -48,7 +48,8 @@ test("displayName never leaks an id", () => {
 test("subtitle and initials", () => {
   assert.equal(c.subtitle(chat({ chatId: "5511999999999@c.us", name: "Bob" })), "+55 11 99999-9999");
   assert.equal(c.subtitle(chat({ chatId: "5511999999999@c.us" })), "");
-  assert.equal(c.subtitle(chat({ chatId: "1@g.us" })), "Group");
+  assert.equal(c.subtitle(chat({ chatId: "1@g.us" })), "");
+  assert.equal(c.subtitle(chat({ chatId: "1@g.us", name: "Family" })), "Group");
   assert.equal(c.initials(chat({ name: "ana maria souza" })), "AS");
   assert.equal(c.initials(chat({ name: "Élan" })), "ÉL");
   assert.equal(c.initials(chat({ chatId: "5511999999999@c.us" })), "99");
