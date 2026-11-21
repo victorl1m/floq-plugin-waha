@@ -6,6 +6,11 @@ import type { Inbox } from "./inbox.js";
 import { registerChats } from "./chats.js";
 import { registerContacts } from "./contacts.js";
 import { registerGroups } from "./groups.js";
+import { registerLabels } from "./labels.js";
+import { registerStatus } from "./status.js";
+import { registerChannels } from "./channels.js";
+import { registerCalls } from "./calls.js";
+import { registerPresence } from "./presence.js";
 
 export interface Deps { core: Core; identity: Identity; store: Store; inbox: Inbox }
 
@@ -13,4 +18,5 @@ export function registerExtras(deps: Deps): void {
   registerChats(deps);
   registerContacts(deps);
   registerGroups(deps);
+  registerLabels(deps); registerStatus(deps); registerChannels(deps); registerCalls(deps); registerPresence(deps);
 }

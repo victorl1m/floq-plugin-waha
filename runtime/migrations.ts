@@ -116,4 +116,16 @@ export const migrations: PluginMigration[] = [
       INSERT INTO {{p}}known_ids (user_id, id) SELECT DISTINCT user_id, chat_id FROM {{p}}messages WHERE from_me = FALSE AND chat_id ~ '^[0-9]{8,15}@c[.]us$' ON CONFLICT DO NOTHING;
     `,
   },
+  {
+    // Statuses (stories) of the last 24 hours; their media lives in media_blobs under "s:<stanza>".
+    id: "005_status",
+    sql: `
+      CREATE TABLE {{p}}statuses (
+        user_id TEXT NOT NULL, stanza TEXT NOT NULL, msg_id TEXT NOT NULL, poster TEXT NOT NULL, poster_name TEXT NOT NULL DEFAULT '', mine BOOLEAN NOT NULL DEFAULT FALSE,
+        type TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', bg TEXT NOT NULL DEFAULT '', media JSONB, sent_at TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY (user_id, stanza)
+      );
+      CREATE INDEX {{p}}statuses_at_idx ON {{p}}statuses (user_id, sent_at DESC);
+    `,
+  },
 ];

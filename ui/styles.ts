@@ -1,6 +1,7 @@
 import { INBOX_CSS } from "./styles-inbox";
 import { COMPOSER_CSS } from "./styles-composer";
 import { PEOPLE_CSS } from "./styles-people";
+import { MORE_CSS } from "./styles-more";
 // One scoped stylesheet for the whole view. An installed plugin gets no Tailwind utilities of its own (the host only ships the classes the app uses),
 // so every rule here is plain CSS under .wa-root. It is unlayered, so it wins over the kit components' layered utilities.
 // The messenger palette (--wa-*) is the plugin's own, with a light and a dark set; fonts, focus ring and destructive colour come from the host.
@@ -175,4 +176,4 @@ export const CSS = `
   .wa-bubble,.wa-day{border:1px solid CanvasText}
   .wa-row[aria-current="true"]{outline:2px solid Highlight;outline-offset:-2px}
 }
-` + INBOX_CSS + COMPOSER_CSS + PEOPLE_CSS;
+` + INBOX_CSS + COMPOSER_CSS + PEOPLE_CSS + MORE_CSS;
