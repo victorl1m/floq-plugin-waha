@@ -1,6 +1,7 @@
 import { definePlugin, type PluginContext } from "../shared/sdk";
 import manifest from "../plugin.json" with { type: "json" };
 import { migrations } from "./migrations.js";
+import { formatPhone, phoneDigits } from "../shared/phone.js";
 import { CHAT_ID, TEXT_MAX, WahaError, normalizeBase, parseWebhook, phoneToChatId, sendText, sessionName, verifyHmac } from "./client.js";
 
 /** Below the agent CLI's ~300 s request timeout. */
@@ -88,9 +89,29 @@ export default definePlugin({
       return send(userId, chatIdOf(b.chatId), textOf(b.text));
     });
 
+    /** Saved from the settings panel's formatted phone field (kv), else the older text setting. */
+    async function savedPhone(userId: string): Promise<unknown> {
+      const v = await ctx.kv.get(userId, "phone");
+      return typeof v === "string" && v ? v : (await ctx.settings.get(userId)).assistantPhone;
+    }
+    ctx.routes.get("/phone", async ({ userId }) => {
+      await owner(userId);
+      const digits = phoneDigits(await savedPhone(userId));
+      return { phone: digits ? `+${digits}` : null, formatted: digits ? formatPhone(digits) : null };
+    });
+    ctx.routes.post("/phone", async ({ userId, body }) => {
+      await owner(userId);
+      const raw = asObject(body).phone;
+      if (raw === "" || raw === null) { await ctx.kv.set(userId, "phone", ""); return { phone: null, formatted: null }; }
+      const digits = phoneDigits(raw);
+      if (!digits) throw ctx.httpError(400, "invalid_phone", "Pick the country and type the number, for example (11) 99999-9999.");
+      await ctx.kv.set(userId, "phone", `+${digits}`);
+      return { phone: `+${digits}`, formatted: formatPhone(digits) };
+    });
+
     /** The user's own number from settings (null when unset or invalid). `override` lets the settings panel test a number before it is saved. */
     async function ownChat(userId: string, override?: unknown) {
-      const raw = override !== undefined && override !== "" ? override : (await ctx.settings.get(userId)).assistantPhone;
+      const raw = override !== undefined && override !== "" ? override : await savedPhone(userId);
       if (raw === undefined || raw === null || raw === "") return null;
       const chatId = phoneToChatId(raw);
       if (!chatId) throw ctx.httpError(400, "invalid_phone", "Use international format: + followed by 8 to 15 digits, for example +5511999999999.");
@@ -112,7 +133,7 @@ export default definePlugin({
     ctx.routes.get("/settings-status", async ({ userId }) => {
       await owner(userId);
       const s = await ctx.settings.get(userId);
-      return { alwaysAllowSend: s.alwaysAllowSend === true, assistantPhoneSet: phoneToChatId(s.assistantPhone) !== null, messageMe: messageMeOn(s) };
+      return { alwaysAllowSend: s.alwaysAllowSend === true, assistantPhoneSet: phoneToChatId(await savedPhone(userId)) !== null, messageMe: messageMeOn(s) };
     });
 
     // ---- agents (`floq plugin call waha ...`): reads are free, a send needs the user's approval first ----
@@ -152,7 +173,7 @@ export default definePlugin({
       await send(userId, chatId, text);
       return { status: "sent" };
     });
-    ctx.internalRoutes.call("/me", async ({ userId }) => { await owner(userId); const s = await ctx.settings.get(userId); return { canMessageMe: phoneToChatId(s.assistantPhone) !== null && messageMeOn(s), sendNeedsApproval: s.alwaysAllowSend !== true }; });
+    ctx.internalRoutes.call("/me", async ({ userId }) => { await owner(userId); const s = await ctx.settings.get(userId); return { canMessageMe: phoneToChatId(await savedPhone(userId)) !== null && messageMeOn(s), sendNeedsApproval: s.alwaysAllowSend !== true }; });
 
     // ---- inbound: WAHA posts events here (token in the path, optional HMAC) ----
     ctx.webhooks.on("events", async (req) => {

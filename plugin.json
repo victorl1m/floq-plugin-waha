@@ -1,7 +1,7 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "apiVersion": 1,
   "tier": "core",
   "description": "A WhatsApp inbox on your own WAHA instance. The AI can read it and message you freely on your own number; messages to other people need your approval.",
@@ -39,17 +39,10 @@
       "required": false
     },
     {
-      "key": "assistantPhone",
-      "type": "text",
-      "label": "Your WhatsApp number",
-      "description": "Your own number in international format, for example +5511999999999. This is the only number \"Let the AI message me freely\" writes to.",
-      "required": false
-    },
-    {
       "key": "messageMe",
       "type": "boolean",
       "label": "Let the AI message me freely",
-      "description": "On by default once your number is saved. The AI can send you plain messages on your own number (updates, results, questions) without asking each time. Turn off to stop it.",
+      "description": "On by default once your number is saved below. The AI can then send you any message on WhatsApp, no approval needed. It only ever writes to your own number.",
       "required": false
     },
     {

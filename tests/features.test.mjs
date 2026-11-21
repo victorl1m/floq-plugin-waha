@@ -25,6 +25,7 @@ function harness(settings, decision = "approved", fetchStatus = 200) {
     httpError: (status, code, message) => Object.assign(new Error(message), { status, code }),
     installOwner: async () => "u1",
     settings: { get: async () => settings },
+    kv: (() => { const m = new Map(); return { get: async (_u, k) => m.get(k), set: async (_u, k, v) => { m.set(k, v); } }; })(),
     secrets: { getInstall: async () => "key" },
     fetchUserUrl: async (_u, url, init) => { sent.push(JSON.parse(init.body)); return { ok: fetchStatus < 400, status: fetchStatus, json: () => ({ id: "m" + sent.length }) }; },
     db: { query: async () => ({ rows: [], rowCount: 1 }) },
@@ -43,7 +44,9 @@ const call = (h, body) => h({ userId: "u1", body, query: {} });
 test("phone validation: E.164 only", () => {
   assert.equal(phoneToChatId("+5511999999999"), "5511999999999@c.us");
   assert.equal(phoneToChatId(" +55 (11) 99999-9999 "), "5511999999999@c.us");
-  for (const bad of ["5511999999999", "+0123456789", "+12", "+1234567890123456", "+55abc", "", null, "+55 11 9999; DROP"]) assert.equal(phoneToChatId(bad), null, String(bad));
+  assert.equal(phoneToChatId("5511999999999"), "5511999999999@c.us");
+  assert.equal(phoneToChatId("0055 11 99999-9999"), "5511999999999@c.us");
+  for (const bad of ["+0123456789", "+12", "+1234567890123456", "+55abc", "", null, "+55 11 9999; DROP"]) assert.equal(phoneToChatId(bad), null, String(bad));
 });
 
 test("default: agent send waits for approval; denied sends nothing", async () => {
@@ -87,4 +90,13 @@ test("message-me: needs a number, honours the switch, sends as written without a
   assert.deepEqual(await call(h.internal["/me"], {}), { canMessageMe: true, sendNeedsApproval: true });
   assert.equal((await call(harness({ ...base, assistantPhone: "+5511999999999", messageMe: false }).internal["/me"], {})).canMessageMe, false);
   assert.equal((await call(harness(base).internal["/me"], {})).canMessageMe, false);
+});
+
+test("phone field: saves any common format as +digits, formats it, and the AI writes to it", async () => {
+  const h = harness({ ...base });
+  const saved = await h.routes["POST /phone"]({ userId: "u1", body: { phone: "+55 (11) 99999-9999" } });
+  assert.deepEqual(saved, { phone: "+5511999999999", formatted: "+55 (11) 99999-9999" });
+  assert.deepEqual(await h.routes["GET /phone"]({ userId: "u1", query: {} }), saved);
+  await assert.rejects(h.routes["POST /phone"]({ userId: "u1", body: { phone: "abc" } }), { status: 400, code: "invalid_phone" });
+  assert.equal((await h.internal["/me"]({ userId: "u1", body: {} })).canMessageMe, true);
 });
