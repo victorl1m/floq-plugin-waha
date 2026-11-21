@@ -1,34 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Badge, Button, PluginPage, PluginState, Textarea, cn, resolvePluginIcon, toast, usePluginApi, usePluginEvent } from "@/plugins/kit";
+import { PluginPage, PluginState, toast, usePluginApi, usePluginEvent } from "@/plugins/kit";
 import type { PluginViewProps } from "@/plugins/sdk";
-
-const IconSend = resolvePluginIcon("IconSend"); // icons come from the host kit: @tabler/icons-react is not shared with plugin bundles
+import type { Chat, Message } from "../shared/chat";
+import { ChatList } from "./chat-list";
+import { Conversation, EmptyConversation } from "./conversation";
+import { CSS } from "./styles";
 
 interface Status { configured: boolean; missingSettings: string[]; missingSecrets: string[]; session: string }
-interface Chat { chatId: string; lastBody: string; lastAt: string; total: number }
-interface Message { id: string; fromMe: boolean; sender: string; body: string; hasMedia: boolean; sentAt: string }
 type Phase = { kind: "loading" } | { kind: "error"; message: string } | { kind: "forbidden" } | { kind: "ready"; status: Status };
+interface Pending { id: string; chatId: string; text: string; at: string }
 
 const statusOf = (e: unknown) => (e as { status?: number } | null)?.status;
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
-const label = (chatId: string) => chatId.replace(/@(c|g)\.us$/, (_m, k: string) => (k === "g" ? " (group)" : ""));
-const time = (iso: string) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const visible = () => typeof document === "undefined" || document.visibilityState === "visible";
 
-/** Chat list and message pane. Sending is the user's own click; the composer keeps the draft if sending fails. */
+/** Two-pane WhatsApp inbox. Sending is the user's own click or Enter; a failed send puts the text back in the composer. */
 export default function InboxView({ plugin }: PluginViewProps) {
   const api = usePluginApi(plugin.id);
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [chats, setChats] = useState<Chat[] | null>(null);
   const [chatsError, setChatsError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [query, setQuery] = useState("");
   const [selected, setSelected] = useState("");
+  const [pane, setPane] = useState<"list" | "chat">("list");
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [messagesError, setMessagesError] = useState("");
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState("");
-  const bottom = useRef<HTMLDivElement>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState<Pending[]>([]);
+  const [sendingId, setSendingId] = useState("");
+  const [focusN, setFocusN] = useState(0);
+  const [now, setNow] = useState(() => new Date());
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+  const seq = useRef(0);
 
   const loadStatus = useCallback(async () => {
     setPhase({ kind: "loading" });
@@ -36,33 +43,76 @@ export default function InboxView({ plugin }: PluginViewProps) {
     catch (e) { setPhase(statusOf(e) === 403 ? { kind: "forbidden" } : { kind: "error", message: messageOf(e) }); }
   }, [api]);
 
+  // Silent after the first load: the old list stays on screen, a failed refresh only matters when there is nothing to show.
   const loadChats = useCallback(async () => {
-    try { setChatsError(""); setChats((await api<{ chats: Chat[] }>("/chats")).chats); }
-    catch (e) { setChatsError(messageOf(e)); }
+    setRefreshing(true);
+    try {
+      const list = (await api<{ chats: Chat[] }>("/chats")).chats ?? [];
+      setChatsError("");
+      // The open chat is being read: do not flash its unread pill back.
+      setChats(visible() ? list.map((c) => (c.chatId === selectedRef.current && c.unread ? { ...c, unread: 0 } : c)) : list);
+    } catch (e) { setChatsError(messageOf(e)); }
+    finally { setRefreshing(false); }
   }, [api]);
 
   const loadMessages = useCallback(async (chatId: string) => {
     try {
-      setMessagesError("");
-      const res = await api<{ messages: Message[] }>(`/messages?chatId=${encodeURIComponent(chatId)}&limit=100`);
-      if (selectedRef.current === chatId) setMessages(res.messages);
+      const res = await api<{ messages: Message[] }>(`/messages?chatId=${encodeURIComponent(chatId)}&limit=200`);
+      if (selectedRef.current === chatId) { setMessagesError(""); setMessages(res.messages ?? []); }
     } catch (e) { if (selectedRef.current === chatId) setMessagesError(messageOf(e)); }
+  }, [api]);
+
+  const markRead = useCallback(async (chatId: string) => {
+    setChats((cs) => cs && cs.map((c) => (c.chatId === chatId && c.unread ? { ...c, unread: 0 } : c)));
+    try { await api("/read", { method: "POST", body: { chatId } }); } catch { /* an older runtime has no /read: ignore */ }
   }, [api]);
 
   useEffect(() => { void loadStatus(); }, [loadStatus]);
   useEffect(() => { if (phase.kind === "ready" && phase.status.configured) void loadChats(); }, [phase, loadChats]);
-  useEffect(() => { if (selected) { setMessages(null); void loadMessages(selected); } }, [selected, loadMessages]);
-  useEffect(() => { bottom.current?.scrollIntoView?.({ block: "end" }); }, [messages]);
-  // Live: a stored message refreshes the list and, when it belongs to the open chat, the pane.
-  usePluginEvent<{ chatId?: string }>(plugin.id, "message", (data) => { void loadChats(); if (data?.chatId && data.chatId === selectedRef.current) void loadMessages(data.chatId); });
+  useEffect(() => {
+    if (!selected) return;
+    setMessages(null); setMessagesError("");
+    void loadMessages(selected);
+    void markRead(selected);
+  }, [selected, loadMessages, markRead]);
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    const onVisible = () => {
+      const id = selectedRef.current;
+      if (visible() && id && chatsRef.current?.some((c) => c.chatId === id && c.unread)) void markRead(id);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [markRead]);
+
+  usePluginEvent<{ chatId?: string }>(plugin.id, "message", (data) => {
+    if (data?.chatId && data.chatId === selectedRef.current) {
+      void loadMessages(data.chatId);
+      if (visible()) { void markRead(data.chatId).then(() => loadChats()); return; }
+    }
+    void loadChats();
+  });
 
   async function send() {
-    const text = draft.trim();
-    if (!text || !selected || sending) return;
-    setSending(true); setSendError("");
-    try { await api("/send", { method: "POST", body: { chatId: selected, text } }); setDraft(""); await loadMessages(selected); void loadChats(); }
-    catch (e) { setSendError(messageOf(e)); toast.error("Message not sent", { description: messageOf(e) }); }
-    finally { setSending(false); }
+    const chatId = selected;
+    const text = (drafts[chatId] ?? "").trim();
+    if (!text || !chatId || sendingId === chatId) return;
+    const id = `pending-${++seq.current}`;
+    setDrafts((d) => ({ ...d, [chatId]: "" }));
+    setPending((p) => [...p, { id, chatId, text, at: new Date().toISOString() }]);
+    setSendingId(chatId);
+    try {
+      await api("/send", { method: "POST", body: { chatId, text } });
+      await loadMessages(chatId);
+      void loadChats();
+    } catch (e) {
+      setDrafts((d) => (d[chatId]?.trim() ? d : { ...d, [chatId]: text }));
+      setFocusN((n) => n + 1);
+      toast.error("Message not sent", { description: messageOf(e) });
+    } finally {
+      setPending((p) => p.filter((x) => x.id !== id));
+      setSendingId("");
+    }
   }
 
   if (phase.kind === "loading") return <PluginPage title="WhatsApp"><PluginState state="loading" label="WhatsApp" /></PluginPage>;
@@ -72,55 +122,20 @@ export default function InboxView({ plugin }: PluginViewProps) {
     return <PluginPage title="WhatsApp"><PluginState state="not-configured" title="Connect WAHA" description="Add your WAHA address and API key, then point a WAHA webhook at Floq." missingSecrets={phase.status.missingSecrets} missingSettings={phase.status.missingSettings} /></PluginPage>;
   }
 
+  const chat = selected ? chats?.find((c) => c.chatId === selected) ?? { chatId: selected, lastBody: "", lastAt: "", total: 0 } : null;
+  const shown = messages && [...messages, ...pending.filter((p) => p.chatId === selected).map((p): Message => ({ id: p.id, fromMe: true, sender: "", body: p.text, hasMedia: false, sentAt: p.at, pending: true }))];
+
   return (
-    <PluginPage title="WhatsApp" description={`Messages received through your WAHA session “${phase.status.session}”.`}>
-      <div className="grid min-h-[28rem] flex-1 gap-4 md:grid-cols-[18rem_1fr]">
-        <section aria-label="Chats" className="min-h-0 overflow-hidden rounded-xl border border-border bg-card/30">
-          {chatsError ? <div className="p-3"><PluginState state="error" description={chatsError} onRetry={() => void loadChats()} /></div>
-            : chats === null ? <div className="p-3"><PluginState state="loading" label="chats" /></div>
-            : chats.length === 0 ? <div className="p-3"><PluginState state="empty" title="No messages yet" description="New WhatsApp messages show up here as WAHA delivers them." /></div>
-            : (
-              <ul className="max-h-[32rem] divide-y divide-border overflow-y-auto">
-                {chats.map((c) => (
-                  <li key={c.chatId}>
-                    <button type="button" aria-current={selected === c.chatId ? "true" : undefined} onClick={() => setSelected(c.chatId)}
-                      className={cn("flex w-full flex-col gap-0.5 px-3 py-2 text-left text-[13px] transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", selected === c.chatId ? "bg-muted/80" : "hover:bg-muted/50")}>
-                      <span className="flex items-center justify-between gap-2"><span className="truncate font-medium">{label(c.chatId)}</span><Badge variant="outline" className="shrink-0">{c.total}</Badge></span>
-                      <span className="truncate text-xs text-muted-foreground">{c.lastBody || "…"}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-        </section>
-        <section aria-label="Messages" className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card/30">
-          {!selected ? <div className="p-4"><PluginState state="empty" title="Choose a chat" description="Pick a conversation to read it and reply." /></div> : (
-            <>
-              <div className="border-b border-border px-3 py-2 text-sm font-medium">{label(selected)}</div>
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3" role="log" aria-live="polite">
-                {messagesError ? <PluginState state="error" description={messagesError} onRetry={() => void loadMessages(selected)} />
-                  : messages === null ? <PluginState state="loading" label="messages" />
-                  : messages.length === 0 ? <PluginState state="empty" title="No messages in this chat" />
-                  : messages.map((m) => (
-                    <div key={m.id} className={cn("flex", m.fromMe ? "justify-end" : "justify-start")}>
-                      <div className={cn("max-w-[80%] rounded-xl px-3 py-1.5 text-[13px]", m.fromMe ? "bg-primary/15 text-foreground" : "bg-muted text-foreground")}>
-                        <p className="break-words whitespace-pre-wrap">{m.body || (m.hasMedia ? "Sent a file" : "")}</p>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">{time(m.sentAt)}</p>
-                      </div>
-                    </div>
-                  ))}
-                <div ref={bottom} />
-              </div>
-              <form className="space-y-2 border-t border-border p-3" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-                <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Write a message…" aria-label="Message" maxLength={4096} className="min-h-14 resize-none text-[13px]" disabled={sending}
-                  onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }} />
-                {sendError && <p role="alert" className="text-xs text-destructive">{sendError}</p>}
-                <div className="flex items-center justify-between gap-2"><span className="text-xs text-muted-foreground">Ctrl+Enter to send</span><Button type="submit" size="sm" disabled={sending || !draft.trim()}><IconSend /> {sending ? "Sending…" : "Send"}</Button></div>
-              </form>
-            </>
-          )}
-        </section>
+    <div className="wa-root" data-pane={pane}>
+      <style>{CSS}</style>
+      <div className="wa-panel">
+        <ChatList chats={chats} error={chatsError} selected={selected} query={query} now={now} refreshing={refreshing}
+          onQuery={setQuery} onSelect={(id) => { setSelected(id); setPane("chat"); }} onRefresh={() => void loadChats()} />
+        {chat ? (
+          <Conversation chat={chat} messages={shown} error={messagesError} now={now} draft={drafts[selected] ?? ""} sending={sendingId === selected} focusToken={`${selected}:${focusN}`}
+            onBack={() => setPane("list")} onRetry={() => void loadMessages(selected)} onDraft={(v) => setDrafts((d) => ({ ...d, [selected]: v }))} onSend={() => void send()} />
+        ) : <EmptyConversation session={phase.status.session} />}
       </div>
-    </PluginPage>
+    </div>
   );
 }
