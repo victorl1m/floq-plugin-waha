@@ -89,27 +89,10 @@ test("parseWebhook: malformed _data never throws; existing fields unchanged", ()
   }
   const m = parseWebhook(ev({ ...base, from: "5511999999999@c.us", fromMe: false, source: "APP", hasMedia: true }));
   assert.deepEqual({ ...m, sentAt: m.sentAt.toISOString() }, {
-    source: "app", session: "default", chatId: "5511999999999@c.us", msgId: "m1", fromMe: false, sender: "5511999999999@c.us", senderName: "", senderPhone: "5511999999999",
-    body: "hi", hasMedia: true, sentAt: new Date(1700000000000).toISOString(), reply: null, links: [],
+    source: "app", session: "default", chatId: "5511999999999@c.us", msgId: "m1", stanza: "m1", fromMe: false, sender: "5511999999999@c.us", senderName: "", senderPhone: "5511999999999",
+    body: "hi", type: "document", hasMedia: true, media: { mime: "", filename: "" }, extra: {}, ack: 0, sentAt: new Date(1700000000000).toISOString(), reply: null, links: [],
   });
   assert.equal(parseWebhook(ev({ ...base, from: "a@c.us" }, "other")), null);
-});
-
-test("GET /chats maps rows to the contract", async () => {
-  const at = "2026-01-02T03:04:05.000Z";
-  const rows = [
-    { chat_id: "5511999999999@c.us", last_at: at, total: 3, last_body: "x".repeat(300), last_from_me: true, last_has_media: false, name: "Maria", phone: "", unread: 0 },
-    { chat_id: "1203630@g.us", last_at: at, total: 1, last_body: "g", last_from_me: false, last_has_media: true, name: "", phone: "", unread: 2 },
-    { chat_id: "123456789012345@lid", last_at: at, total: 1, last_body: "l", last_from_me: false, last_has_media: false, name: null, phone: "5511988887777", unread: "4" },
-    { chat_id: "status@broadcast", last_at: at, total: 1, last_body: null, last_from_me: false, last_has_media: false, name: null, phone: null, unread: 0 },
-  ];
-  const h = harness(() => rows);
-  const { chats } = await h.routes["GET /chats"]({ userId: "u1", query: {} });
-  assert.deepEqual(chats.map((c) => [c.kind, c.name, c.phone, c.unread]), [["user", "Maria", "5511999999999", 0], ["group", null, null, 2], ["user", null, "5511988887777", 4], ["other", null, null, 0]]);
-  assert.equal(chats[0].lastBody.length, 200); assert.equal(chats[0].lastFromMe, true); assert.equal(chats[1].lastHasMedia, true);
-  assert.equal(chats[0].lastAt, at); assert.equal(chats[0].total, 3); assert.equal(chats[3].lastBody, "");
-  assert.match(h.queries[0].sql, /LIMIT 100/); assert.equal(h.queries[0].params[0], "u1");
-  assert.deepEqual((await h.internal["/chats"]({ userId: "u1" })).chats.length, 4);
 });
 
 test("GET /messages includes senderName", async () => {
@@ -130,33 +113,6 @@ test("POST /read validates, is owner-only and writes for the right user and chat
   await assert.rejects(h.routes["POST /read"]({ userId: "u2", body: { chatId: "5511999999999@c.us" } }), { status: 403 });
   assert.equal(reads().length, 1);
   assert.equal(h.internal["/read"], undefined);
-});
-
-test("webhook upserts a contact for inbound 1:1 only; toast shows the name", async () => {
-  const h = harness();
-  await h.webhook(ev({ ...base, from: "5511999999999@c.us", fromMe: false, pushName: "Maria" }));
-  const contact = h.queries.filter((q) => /INSERT INTO\s+\S*contacts/.test(q.sql));
-  assert.equal(contact.length, 1); assert.deepEqual(contact[0].params, ["u1", "5511999999999@c.us", "Maria", "5511999999999"]);
-  assert.equal(h.toasts[0].title, "WhatsApp: Maria");
-  const before = h.queries.length;
-  await h.webhook(ev({ ...base, id: "m2", from: "1203630@g.us", fromMe: false, participant: "5511999999999@c.us", pushName: "Maria" }));
-  await h.webhook(ev({ ...base, id: "m3", from: "me@c.us", to: "5511999999999@c.us", fromMe: true }));
-  assert.equal(h.queries.slice(before).filter((q) => /contacts/.test(q.sql)).length, 0);
-  await h.webhook(ev({ ...base, id: "m4", from: "5511999999999@c.us", fromMe: false }));
-  assert.match(h.toasts.at(-1).title, /^WhatsApp: \+?55/);
-  await h.webhook(ev({ ...base, id: "m5", from: "123456789012345@lid", fromMe: false }));
-  assert.equal(h.toasts.at(-1).title, "WhatsApp: new message");
-});
-
-test("every query is filtered by the user id", async () => {
-  const h = harness();
-  await h.routes["GET /chats"]({ userId: "u1" });
-  await h.routes["GET /messages"]({ userId: "u1", query: { chatId: "x@c.us" } });
-  await h.routes["POST /read"]({ userId: "u1", body: { chatId: "x@c.us" } });
-  await h.webhook(ev({ ...base, from: "5511999999999@c.us", fromMe: false, pushName: "M" }));
-  await h.routes["POST /send"]({ userId: "u1", body: { chatId: "x@c.us", text: "hi" } });
-  assert.ok(h.queries.length >= 6);
-  for (const q of h.queries) { assert.match(q.sql, /user_id/); assert.equal(q.params[0], "u1"); }
 });
 
 test("migrations: 002 appended, ids unique, 001 untouched", () => {

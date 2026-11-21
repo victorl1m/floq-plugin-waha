@@ -166,7 +166,7 @@ test("unread counts and read marks cover both addresses", async () => {
   assert.equal((await h.chats())[0].unread, 3);
   await h.routes["POST /read"]({ userId: "u1", body: { chatId: PN } });
   assert.equal((await h.chats())[0].unread, 0);
-  assert.deepEqual((await h.db.query("SELECT chat_id FROM chat_reads ORDER BY 1")).rows.map((r) => r.chat_id), [LID, PN]);
+  assert.deepEqual((await h.db.query("SELECT chat_id FROM chat_reads ORDER BY 1")).rows.map((r) => r.chat_id), [LID, "553499990000@c.us", PN], "every address of the chat is marked, the other spelling of the number included");
   await new Promise((r) => setTimeout(r, 15));
   await h.hook({ from: LID, body: "d" });
   await h.hook({ fromMe: true, from: "me@c.us", to: LID, body: "mine" });
@@ -227,25 +227,26 @@ test("group messages show the phone of a sender known only by lid", async () => 
   assert.deepEqual((await h.chats()).map((c) => [c.chatId, c.kind, c.total]), [[GROUP, "group", 2]]);
 });
 
-test("sending to a merged chat uses the address WAHA accepts and remembers it", async () => {
-  let refuse = PN;
+test("sending to a merged chat goes where the contact last wrote from, and falls back to its other address", async () => {
+  let refuse = "";
   const h = await harness({ waha: (url, body) => (url.endsWith("/api/sendText") && body.chatId === refuse ? { status: 500, json: {} } : undefined) });
   await h.hook({ from: PN, body: "a" });
   await h.hook({ from: LID, body: "b", _data: { key: { remoteJidAlt: PN } } });
   await h.routes["POST /send"]({ userId: "u1", body: { chatId: PN, text: "first" } });
-  assert.deepEqual(h.sent.map((s) => s.chatId), [PN, LID]);
-  assert.equal(h.kv.get("route:" + PN), LID);
-  // Next time the address that worked goes first.
-  await h.routes["POST /send"]({ userId: "u1", body: { chatId: PN, text: "second" } });
-  assert.deepEqual(h.sent.slice(2).map((s) => s.chatId), [LID]);
-  // When that one stops working the other is tried and becomes the new route.
+  assert.deepEqual(h.sent.map((s) => s.chatId), [LID], "they last wrote from the lid");
+  // When that address stops working the canonical one is tried.
   refuse = LID;
-  await h.routes["POST /send"]({ userId: "u1", body: { chatId: LID, text: "third" } });
-  assert.deepEqual(h.sent.slice(3).map((s) => s.chatId), [LID, PN]);
+  await h.routes["POST /send"]({ userId: "u1", body: { chatId: LID, text: "second" } });
+  assert.deepEqual(h.sent.slice(1).map((s) => s.chatId), [LID, PN]);
   assert.equal(h.kv.get("route:" + PN), PN);
+  // A new message from the phone id moves the route back there.
+  refuse = "";
+  await h.hook({ from: PN, body: "c" });
+  await h.routes["POST /send"]({ userId: "u1", body: { chatId: LID, text: "third" } });
+  assert.deepEqual(h.sent.slice(3).map((s) => s.chatId), [PN]);
   // Everything landed in the one chat, and the live event names it.
-  assert.deepEqual((await h.messages(PN)).map((m) => m.body), ["a", "b", "first", "second", "third"]);
-  assert.deepEqual((await h.chats()).map((c) => [c.chatId, c.total, c.unread, c.lastFromMe]), [[PN, 5, 0, true]]);
+  assert.deepEqual((await h.messages(PN)).map((m) => m.body).sort(), ["a", "b", "c", "first", "second", "third"]);
+  assert.deepEqual((await h.chats()).map((c) => [c.chatId, c.total, c.unread, c.lastFromMe]), [[PN, 6, 0, true]]);
   assert.equal(h.events.at(-1).chatId, PN);
 });
 
@@ -253,7 +254,7 @@ test("an auth or network failure is not retried on the other address", async () 
   for (const status of [401, 403, 429]) {
     const h = await harness({ waha: (url) => (url.endsWith("/api/sendText") ? { status, json: {} } : undefined) });
     await h.hook({ from: LID, body: "b", _data: { key: { remoteJidAlt: PN } } });
-    await assert.rejects(h.routes["POST /send"]({ userId: "u1", body: { chatId: PN, text: "x" } }), { status: 502, code: "waha_unavailable" });
+    await assert.rejects(h.routes["POST /send"]({ userId: "u1", body: { chatId: PN, text: "x" } }), { status: 502, code: status === 429 ? "waha_unavailable" : "waha_unauthorized" });
     assert.equal(h.sent.length, 1);
     assert.equal((await h.messages(PN)).length, 1);
   }

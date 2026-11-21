@@ -59,8 +59,15 @@ test("subtitle and initials", () => {
 });
 
 test("previewText", () => {
-  assert.deepEqual(c.previewText(chat({ lastBody: "a\n\nb", lastFromMe: true })), { prefix: "You: ", text: "a b", media: false });
-  assert.deepEqual(c.previewText(chat({ lastHasMedia: true })), { prefix: "", text: "Photo or file", media: true });
+  assert.deepEqual(c.previewText(chat({ lastBody: "a\n\nb", lastFromMe: true })), { prefix: "You: ", text: "a b", media: false, kind: "chat" });
+  assert.deepEqual(c.previewText(chat({ lastHasMedia: true })), { prefix: "", text: "Photo or file", media: true, kind: "document" });
+  assert.deepEqual(c.previewText(chat({ lastType: "ptt", lastHasMedia: true })), { prefix: "", text: "Voice message", media: true, kind: "ptt" });
+  assert.deepEqual(c.previewText(chat({ lastType: "image", lastBody: "look", lastFromMe: true })), { prefix: "You: ", text: "look", media: true, kind: "image" });
+  assert.equal(c.previewText(chat({ lastDeleted: true })).text, "This message was deleted");
+  assert.equal(c.previewText(chat({ chatId: "1@g.us", kind: "group", lastBody: "oi", lastSenderName: "Rafael Souza" })).prefix, "Rafael: ");
+  assert.equal(c.chatTitle(chat({ isSelf: true })), "You");
+  assert.equal(c.chatTitle(chat({ isSelf: true, name: "Victor" })), "Victor (You)");
+  assert.equal(c.subtitle(chat({ isSelf: true, name: "Victor" })), "Message yourself");
   assert.equal(c.previewText(chat({})).text, "No text");
 });
 

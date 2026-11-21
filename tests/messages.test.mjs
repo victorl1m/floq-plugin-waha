@@ -328,6 +328,24 @@ test("history sync fills a chat from WAHA and refreshes acks without duplicating
   assert.ok(h.events.some((e) => e.name === "message" && e.sync));
 });
 
+test("the chat list contract; contacts are learned from inbound 1:1 messages; the toast names the sender; muted chats stay quiet", async () => {
+  const h = await harness(plugin, migrations, {});
+  await h.message({ from: A, body: "x".repeat(300), _data: { notifyName: "Maria" } });
+  await h.message({ from: G, participant: A, body: "g", hasMedia: true, media: { mimetype: "image/jpeg", url: null }, _data: { type: "image" } });
+  await h.message({ from: "123456789012345@lid", body: "l" });
+  await h.message({ from: "status@broadcast", participant: A, body: "story" });
+  assert.deepEqual(h.toasts.map((t) => t.title), ["WhatsApp: Maria", "WhatsApp: Maria", "WhatsApp: new message"]);
+  const chats = await h.chats();
+  assert.deepEqual(chats.map((c) => [c.chatId, c.kind, c.name, c.phone, c.unread, c.lastType]), [["123456789012345@lid", "user", null, null, 1, "chat"], [G, "group", null, null, 1, "image"], [A, "user", "Maria", "5511988887777", 1, "chat"]]);
+  assert.equal(chats[2].lastBody.length, 200); assert.equal(chats[1].lastHasMedia, true); assert.equal(chats[1].lastSenderName, "Maria");
+  assert.deepEqual(Object.keys(chats[0]).sort(), ["archived", "avatar", "blocked", "chatId", "isSelf", "kind", "labels", "lastAck", "lastAt", "lastBody", "lastDeleted", "lastFromMe", "lastHasMedia", "lastSenderName", "lastType", "markedUnread", "muted", "name", "phone", "pinned", "total", "unread"]);
+  assert.ok(!JSON.stringify(chats).includes("status@broadcast"), "stories are not a chat");
+  await h.sql("INSERT INTO chat_state (user_id, chat_id, muted_until) VALUES ('u1', $1, now() + interval '1 hour')", [A]);
+  await h.message({ from: A, body: "quiet" });
+  assert.equal(h.toasts.length, 3);
+  assert.equal((await h.chats()).find((c) => c.chatId === A).muted, true);
+});
+
 // ---- access ----
 
 test("every inbox route refuses anyone but the owner", async () => {

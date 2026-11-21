@@ -87,7 +87,7 @@ test("message-me: needs a number, honours the switch, sends as written without a
   assert.equal(h.approvals.length, 0);
   await assert.rejects(call(h.internal["/message-me"], { text: "x" }), { status: 429, message: /loops/ });
   await assert.rejects(call(h.internal["/message-me"], { text: "" }), { status: 400 });
-  assert.deepEqual(await call(h.internal["/me"], {}), { canMessageMe: true, sendNeedsApproval: true });
+  assert.deepEqual(await call(h.internal["/me"], {}), { canMessageMe: true, sendNeedsApproval: true, account: null });
   assert.equal((await call(harness({ ...base, assistantPhone: "+5511999999999", messageMe: false }).internal["/me"], {})).canMessageMe, false);
   assert.equal((await call(harness(base).internal["/me"], {})).canMessageMe, false);
 });

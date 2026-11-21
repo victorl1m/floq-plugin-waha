@@ -127,13 +127,13 @@ export function createStore(core: Core, identity: Identity): Store {
          vis AS (SELECT u.* FROM msgs u LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.chat_id = u.cid WHERE st.cleared_at IS NULL OR u.sent_at > st.cleared_at),
          agg AS (SELECT cid, MAX(sent_at) AS last_at, COUNT(*)::int AS total FROM vis GROUP BY cid)
          SELECT a.cid AS chat_id, a.last_at, a.total, l.body AS last_body, l.from_me AS last_from_me, l.has_media AS last_has_media, l.type AS last_type, l.ack AS last_ack, l.deleted_at AS last_deleted,
-                l.sender_name AS last_sender_name, c.name AS name, c.push_name AS push_name, c.phone AS phone, c.has_picture AS has_picture, c.picture_at AS picture_at, c.blocked AS blocked,
+                COALESCE(NULLIF(l.sender_name, ''), (SELECT COALESCE(NULLIF(k2.name, ''), k2.push_name) FROM {{p}}contacts k2 WHERE k2.user_id = $1 AND k2.chat_id = l.sender LIMIT 1), '') AS last_sender_name, c.name AS name, c.push_name AS push_name, c.phone AS phone, c.has_picture AS has_picture, c.picture_at AS picture_at, c.blocked AS blocked,
                 COALESCE(st.archived, FALSE) AS archived, COALESCE(st.pinned, FALSE) AS pinned, st.muted_until AS muted_until, COALESCE(st.marked_unread, FALSE) AS marked_unread, COALESCE(st.labels, '[]'::jsonb) AS labels,
                 (SELECT COUNT(*)::int FROM vis u LEFT JOIN {{p}}chat_reads r ON r.user_id = $1 AND r.chat_id = u.chat_id
                   WHERE u.cid = a.cid AND u.from_me = FALSE AND (r.read_at IS NULL OR u.created_at > r.read_at)) AS unread
            FROM agg a
            LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.chat_id = a.cid
-           LEFT JOIN LATERAL (SELECT body, from_me, has_media, type, ack, deleted_at, sender_name FROM vis WHERE cid = a.cid ORDER BY sent_at DESC, id DESC LIMIT 1) l ON TRUE
+           LEFT JOIN LATERAL (SELECT body, from_me, has_media, type, ack, deleted_at, sender_name, sender FROM vis WHERE cid = a.cid ORDER BY sent_at DESC, id DESC LIMIT 1) l ON TRUE
            LEFT JOIN LATERAL (
              SELECT MAX(NULLIF(k.name, '')) AS name, MAX(NULLIF(k.push_name, '')) AS push_name, MAX(NULLIF(k.phone, '')) AS phone, BOOL_OR(k.has_picture) AS has_picture, MAX(k.picture_at) AS picture_at, BOOL_OR(k.blocked) AS blocked
                FROM {{p}}contacts k WHERE k.user_id = $1 AND (k.chat_id = a.cid OR k.chat_id IN (SELECT lid FROM {{p}}lid_map WHERE user_id = $1 AND pn = a.cid))) c ON TRUE
@@ -213,8 +213,11 @@ export function createStore(core: Core, identity: Identity): Store {
     },
 
     async route(userId, chatId) {
-      const ids = await identity.aliases(userId, chatId);
-      if (ids.length < 2) return ids;
+      const every = await identity.aliases(userId, chatId);
+      if (every.length < 2) return every;
+      // The other spelling of a number is only a way to find the chat, never an address to write to, unless WAHA itself reported it.
+      const real = new Set((await q(`SELECT id FROM {{p}}known_ids WHERE user_id = $1 AND id = ANY($2::text[])`, [userId, every])).rows.map((x) => String(x.id)));
+      const ids = every.filter((id, i) => i === 0 || !pnOf(id) || real.has(id));
       const last = (await q(`SELECT chat_id FROM {{p}}messages WHERE user_id = $1 AND chat_id = ANY($2::text[]) AND from_me = FALSE ORDER BY sent_at DESC LIMIT 1`, [userId, ids])).rows[0]?.chat_id;
       const kv = await ctx.kv.get(userId, `route:${ids[0]}`);
       const first = typeof last === "string" && ids.includes(last) ? last : typeof kv === "string" && ids.includes(kv) ? kv : ids[0];
@@ -370,7 +373,14 @@ export function createStore(core: Core, identity: Identity): Store {
     core.publish(userId, "message", { chatId, fromMe: false, preview: m.body.slice(0, 120) });
     const st = (await q(`SELECT muted_until, archived FROM {{p}}chat_state WHERE user_id = $1 AND chat_id = $2`, [userId, chatId])).rows[0];
     if (st?.muted_until && new Date(st.muted_until as string).getTime() > Date.now()) return;
-    ctx.toast(userId, { title: `WhatsApp: ${m.senderName || (m.senderPhone ? formatPhone(displayDigits(m.senderPhone)) : "") || "new message"}`, description: m.body.slice(0, 120) || (m.hasMedia ? "Sent a file" : m.type === "location" ? "Sent a location" : m.type === "vcard" ? "Sent a contact" : m.type === "poll" ? "Sent a poll" : "") });
+    let who = m.senderName || (m.senderPhone ? formatPhone(displayDigits(m.senderPhone)) : "");
+    if (!who || isGroup(chatId)) {
+      // A saved name beats the push name; in a group the sender is named, with the group after it.
+      const known = async (id: string) => { const k = (await q(`SELECT name, push_name FROM {{p}}contacts WHERE user_id = $1 AND chat_id = ANY($2::text[]) ORDER BY (name <> '') DESC LIMIT 1`, [userId, await identity.aliases(userId, id)])).rows[0]; return String(k?.name || k?.push_name || ""); };
+      who = who || (await known(isGroup(chatId) ? m.sender : chatId));
+      if (isGroup(chatId)) { const g = await known(chatId); if (g) who = who ? `${who} in ${g}` : g; }
+    }
+    ctx.toast(userId, { title: `WhatsApp: ${who || "new message"}`, description: m.body.slice(0, 120) || (m.hasMedia ? "Sent a file" : m.type === "location" ? "Sent a location" : m.type === "vcard" ? "Sent a contact" : m.type === "poll" ? "Sent a poll" : "") });
   });
   for (const ackEvent of ["message.ack", "message.ack.group"]) core.on(ackEvent, async (userId, e) => {
     const p = e.payload, stanza = stanzaOf(p.id);
