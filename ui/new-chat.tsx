@@ -74,7 +74,7 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                   header={features.groups && (
                     <button type="button" className="wa-pickrow wa-pickaction" onClick={() => { setPicked([]); setStep("pick"); }}>
                       <span className="wa-pic wa-pic-sm wa-pic-green"><IconUsersPlus /></span>
-                      <span className="wa-pickbody"><b>New group</b></span><IconChevronRight className="wa-chev" />
+                      <span className="wa-pickbody"><b>New group</b></span><IconChevronRight className="wa-pchev" />
                     </button>
                   )} />
               ) : (

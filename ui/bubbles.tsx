@@ -145,7 +145,7 @@ function ContactCards({ m }: { m: Message }) {
         const phone = (c.phones[0] ?? "").replace(/\D/g, "");
         const pretty = c.formatted?.[0] || (phone ? formatPhoneDisplay(phone) : "");
         return (
-          <div key={i} className="wa-card">
+          <div key={i} className="wa-bcard">
             <div className="wa-card-h">
               <Avatar chat={{ chatId: phone ? phone + "@c.us" : "card" + i, name: c.name }} small />
               <span className="wa-card-t"><b>{c.name || pretty || "Contact"}</b>{pretty && c.name && <span>{pretty}</span>}{c.phones.length > 1 && <span>+{c.phones.length - 1} more</span>}</span>
@@ -258,7 +258,7 @@ function Row({ m, chat, first, last, sender }: RowProps) {
     const missed = label.startsWith("Missed");
     return (
       <div className="wa-msg wa-sys" data-mid={m.id}>
-        <span className={cn("wa-sys-chip wa-call", missed && "wa-call-missed")}>{missed ? <IconCallMissed /> : m.call?.video ? <IconVideo /> : <IconPhone />}{label}<time dateTime={m.sentAt}>{timeOf(m.sentAt)}</time></span>
+        <span className={cn("wa-sys-chip wa-callrow", missed && "wa-callrow-missed")}>{missed ? <IconCallMissed /> : m.call?.video ? <IconVideo /> : <IconPhone />}{label}<time dateTime={m.sentAt}>{timeOf(m.sentAt)}</time></span>
       </div>
     );
   }

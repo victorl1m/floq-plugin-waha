@@ -283,7 +283,7 @@ function GroupBody({ chat }: { chat: Chat }) {
         {find !== null && find.trim() && shown.length === 0 && <p className="wa-dlg-note">No participants match “{find.trim()}”.</p>}
       </section>
       <section className="wa-card wa-rows">
-        <Row icon={<IconLink />} onClick={() => setInvite(true)} trailing={<IconChevronRight className="wa-chev" />}>Invite to group via link</Row>
+        <Row icon={<IconLink />} onClick={() => setInvite(true)} trailing={<IconChevronRight className="wa-pchev" />}>Invite to group via link</Row>
         <Row icon={<IconExit />} danger onClick={() => setLeaving(true)}>Exit group</Row>
       </section>
       <AddParticipantsDialog open={adding} onOpenChange={setAdding} chatId={chat.chatId} existing={info.participants.map((p) => p.id)} onDone={() => load(true)} />

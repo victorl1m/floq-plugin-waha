@@ -85,7 +85,7 @@ export function ContactPicker({ selected, onToggle, exclude = [], placeholder = 
                   <button type="button" className="wa-pickrow" aria-pressed={on} onClick={() => onToggle(c)}>
                     <Pic chat={like} />
                     <span className="wa-pickbody"><b>{displayName(like)}</b>{c.name && phoneText(c.phone) && <span>{phoneText(c.phone)}</span>}</span>
-                    {multi && <span className="wa-tick" aria-hidden="true">{on && <IconCheck />}</span>}
+                    {multi && <span className="wa-ptk" aria-hidden="true">{on && <IconCheck />}</span>}
                   </button>
                 </li>
               );

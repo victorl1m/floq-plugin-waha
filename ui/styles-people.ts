@@ -61,11 +61,11 @@ export const PEOPLE_CSS = `
 .wa-pickbody{flex:1;min-width:0;display:flex;flex-direction:column}
 .wa-pickbody b{font-size:15px;font-weight:500;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wa-pickbody span{font-size:13px;line-height:18px;color:var(--wa-sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wa-tick{flex:none;display:grid;place-items:center;width:22px;height:22px;margin-left:auto;border:1.5px solid var(--wa-line);border-radius:50%;color:var(--wa-on-green)}
-.wa-pickrow[aria-pressed="true"] .wa-tick{border-color:var(--wa-green);background:var(--wa-green)}
-.wa-tick svg{width:14px;height:14px;stroke-width:2.6}
+.wa-ptk{flex:none;display:grid;place-items:center;width:22px;height:22px;margin-left:auto;border:1.5px solid var(--wa-line);border-radius:50%;color:var(--wa-on-green)}
+.wa-pickrow[aria-pressed="true"] .wa-ptk{border-color:var(--wa-green);background:var(--wa-green)}
+.wa-ptk svg{width:14px;height:14px;stroke-width:2.6}
 .wa-pickaction .wa-pickbody b{color:var(--wa-text)}
-.wa-chev{flex:none;width:18px;height:18px;margin-left:auto;color:var(--wa-sub)}
+.wa-pchev{flex:none;width:18px;height:18px;margin-left:auto;color:var(--wa-sub)}
 
 /* new chat */
 .wa-seg{display:flex;gap:4px;padding:3px;border-radius:999px;background:var(--wa-pill)}

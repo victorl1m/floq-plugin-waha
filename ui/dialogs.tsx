@@ -260,8 +260,8 @@ export function ContactDialog({ open, onOpenChange, onSend }: Open & { onSend: (
       <Shell title="Send contact" description="Pick up to 5 contacts."
         footer={<><span className="wa-dlg-count">{sel.length} selected</span><Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="button" disabled={!sel.length || busy} onClick={() => void send()}>{busy ? <Spinner /> : null}Send</Button></>}>
         {sel.length > 0 && (
-          <div className="wa-chosen" aria-label="Selected contacts">
-            {sel.map((s) => <span key={s.phone} className="wa-tag">{s.name}<button type="button" aria-label={"Remove " + s.name} onClick={() => setSel((x) => x.filter((y) => y.phone !== s.phone))}><IconClose /></button></span>)}
+          <div className="wa-bchosen" aria-label="Selected contacts">
+            {sel.map((s) => <span key={s.phone} className="wa-btag">{s.name}<button type="button" aria-label={"Remove " + s.name} onClick={() => setSel((x) => x.filter((y) => y.phone !== s.phone))}><IconClose /></button></span>)}
           </div>
         )}
         {manual ? (
@@ -317,7 +317,7 @@ export function MessageInfoDialog({ message, open, onOpenChange }: Open & { mess
     <Dialog open={open} onOpenChange={onOpenChange}>
       <Shell title="Message info" description={message?.body ? message.body.slice(0, 100) : undefined}>
         {err ? <p className="wa-err" role="alert"><IconAlertCircle />{err}</p> : !info ? <div className="wa-dlg-none"><Spinner /></div> : (
-          <dl className="wa-info">
+          <dl className="wa-minfo">
             <dt>Sent</dt><dd>{fullDate(info.sentAt)}</dd>
             {message?.fromMe && state && <><dt>Delivery</dt><dd>{state === "read" ? (info.ack === 4 ? "Read and played" : "Read") : ACK_LABEL[state]}</dd></>}
             {info.edited && <><dt>Edited</dt><dd>Yes</dd></>}

@@ -171,7 +171,7 @@ a.wa-lp:hover{background:color-mix(in srgb,var(--wa-text) 11%,transparent)}
 .wa-loc-open:hover{text-decoration:underline}
 .wa-loc-open svg{width:14px;height:14px}
 .wa-cards{display:flex;flex-direction:column;gap:5px}
-.wa-card{min-width:min(240px,62cqw);padding:9px 10px 0;border-radius:6px;background:color-mix(in srgb,var(--wa-text) 7%,transparent);overflow:hidden}
+.wa-bcard{min-width:min(240px,62cqw);padding:9px 10px 0;border-radius:6px;background:color-mix(in srgb,var(--wa-text) 7%,transparent);overflow:hidden}
 .wa-card-h{display:flex;align-items:center;gap:10px;padding-bottom:8px}
 .wa-card-t{display:flex;flex-direction:column;min-width:0}
 .wa-card-t b{font-size:14.5px;font-weight:500;line-height:19px;overflow-wrap:anywhere}
@@ -203,7 +203,7 @@ a.wa-lp:hover{background:color-mix(in srgb,var(--wa-text) 11%,transparent)}
 .wa-sys-chip{display:inline-flex;align-items:center;gap:7px;max-width:82%;padding:5px 12px 6px;border-radius:8px;background:var(--wa-chip);color:var(--wa-sub);font-size:12.5px;line-height:17px;text-align:center;box-shadow:var(--wa-shadow);overflow-wrap:anywhere}
 .wa-sys-chip svg{flex:none;width:16px;height:16px}
 .wa-sys-chip time{font-size:11px;opacity:.8}
-.wa-call-missed svg{color:var(--wa-red)}
+.wa-callrow-missed svg{color:var(--wa-red)}
 .wa-del{display:flex;align-items:center;gap:6px;font-style:italic;color:var(--wa-meta)}
 .wa-del svg{flex:none;width:16px;height:16px}
 
@@ -298,15 +298,15 @@ a.wa-lp:hover{background:color-mix(in srgb,var(--wa-text) 11%,transparent)}
 .wa-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .wa-err{display:flex;align-items:flex-start;gap:6px;margin:0;font-size:13px;line-height:18px;color:var(--wa-red)}
 .wa-err svg{flex:none;width:16px;height:16px;margin-top:1px}
-.wa-chosen{display:flex;flex-wrap:wrap;gap:6px}
-.wa-tag{display:inline-flex;align-items:center;gap:2px;padding:3px 4px 3px 10px;border-radius:999px;background:var(--wa-pill);font-size:13px}
-.wa-tag button{display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--wa-icon);cursor:pointer}
-.wa-tag button:hover{background:var(--wa-active)}
-.wa-tag svg{width:13px;height:13px}
+.wa-bchosen{display:flex;flex-wrap:wrap;gap:6px}
+.wa-btag{display:inline-flex;align-items:center;gap:2px;padding:3px 4px 3px 10px;border-radius:999px;background:var(--wa-pill);font-size:13px}
+.wa-btag button{display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--wa-icon);cursor:pointer}
+.wa-btag button:hover{background:var(--wa-active)}
+.wa-btag svg{width:13px;height:13px}
 .wa-self{align-self:flex-start;margin-top:2px}
-.wa-info{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px 12px;margin:0;font-size:14px}
-.wa-info dt{color:var(--wa-sub)}
-.wa-info dd{margin:0;overflow-wrap:anywhere}
+.wa-minfo{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px 12px;margin:0;font-size:14px}
+.wa-minfo dt{color:var(--wa-sub)}
+.wa-minfo dd{margin:0;overflow-wrap:anywhere}
 .wa-who-react{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
 .wa-who-react li{display:flex;align-items:center;gap:8px}
 .wa-who-react span{font-size:18px}
