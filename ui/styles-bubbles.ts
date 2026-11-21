@@ -1,5 +1,5 @@
 // Styles of the conversation log: bubbles, media, menus, lightbox, dialogs. Appended to the plugin stylesheet in styles.ts.
-// Dialogs render in a portal outside .wa-root, so .wa-dlg repeats the palette variables they need.
+// Dialogs render in a portal outside .wa-root, so .wa-bdlg repeats the palette variables they need.
 export const BUBBLES_CSS = `
 .wa-root{--wa-tick-read:#53bdeb;--wa-link:#027eb5;--wa-red:#e5484d;--wa-mark:#ffe08a;--wa-map-bg:#e8e6df;--wa-map-road:#ffffff;--wa-map-park:#c3e2bb;--wa-map-main:#f6e2a0}
 .dark .wa-root,.wa-root.wa-dark{--wa-link:#53bdeb;--wa-red:#f2777b;--wa-mark:#8a6d00;--wa-map-bg:#1f2b31;--wa-map-road:#34444c;--wa-map-park:#21402f;--wa-map-main:#4a4326}
@@ -262,16 +262,16 @@ a.wa-lp:hover{background:color-mix(in srgb,var(--wa-text) 11%,transparent)}
 .wa-sb-res button:hover,.wa-sb-res button:focus-visible{background:var(--wa-hover);outline:0}
 .wa-sb-d{display:block;font-size:12px;line-height:16px;color:var(--wa-sub)}
 .wa-sb-t{display:block;font-size:13.5px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wa-sb-res .wa-dlg-none{padding:16px;text-align:center;color:var(--wa-sub);font-size:13px}
+.wa-sb-res .wa-bdlg-none{padding:16px;text-align:center;color:var(--wa-sub);font-size:13px}
 
 /* dialogs: they render in a portal outside .wa-root, so they carry their own palette */
-.wa-dlg{--wa-text:#111b21;--wa-sub:#5f6f79;--wa-line:#e4e8eb;--wa-green:#00a884;--wa-green-text:#008069;--wa-hover:#f5f6f6;--wa-active:#e9edef;--wa-pill:#f0f2f5;--wa-icon:#54656f;--wa-meta:#667781;--wa-badge:#1fa855;--wa-on-green:#fff;--wa-l:42%;--wa-avatar-l:86%;--wa-avatar-fg:32%;--wa-link:#027eb5;--wa-red:#e5484d}
-.dark .wa-dlg{--wa-text:#e9edef;--wa-sub:#8696a0;--wa-line:#2a3942;--wa-green-text:#21c063;--wa-hover:#1a262d;--wa-active:#2a3942;--wa-pill:#1f2c33;--wa-icon:#aebac1;--wa-meta:#9fb0b8;--wa-on-green:#0b141a;--wa-l:68%;--wa-avatar-l:26%;--wa-avatar-fg:82%;--wa-link:#53bdeb;--wa-red:#f2777b}
-.wa-dlg *,.wa-dlg *::before,.wa-dlg *::after{box-sizing:border-box}
-.wa-dlg{max-width:min(440px,calc(100vw - 24px))!important}
-.wa-dlg-search{position:relative}
-.wa-dlg-search svg{position:absolute;left:10px;top:50%;width:16px;height:16px;transform:translateY(-50%);color:var(--wa-sub);pointer-events:none}
-.wa-dlg-search input{padding-left:32px}
+.wa-bdlg{--wa-text:#111b21;--wa-sub:#5f6f79;--wa-line:#e4e8eb;--wa-green:#00a884;--wa-green-text:#008069;--wa-hover:#f5f6f6;--wa-active:#e9edef;--wa-pill:#f0f2f5;--wa-icon:#54656f;--wa-meta:#667781;--wa-badge:#1fa855;--wa-on-green:#fff;--wa-l:42%;--wa-avatar-l:86%;--wa-avatar-fg:32%;--wa-link:#027eb5;--wa-red:#e5484d}
+.dark .wa-bdlg{--wa-text:#e9edef;--wa-sub:#8696a0;--wa-line:#2a3942;--wa-green-text:#21c063;--wa-hover:#1a262d;--wa-active:#2a3942;--wa-pill:#1f2c33;--wa-icon:#aebac1;--wa-meta:#9fb0b8;--wa-on-green:#0b141a;--wa-l:68%;--wa-avatar-l:26%;--wa-avatar-fg:82%;--wa-link:#53bdeb;--wa-red:#f2777b}
+.wa-bdlg *,.wa-bdlg *::before,.wa-bdlg *::after{box-sizing:border-box}
+.wa-bdlg{max-width:min(440px,calc(100vw - 24px))!important}
+.wa-bdlg-search{position:relative}
+.wa-bdlg-search svg{position:absolute;left:10px;top:50%;width:16px;height:16px;transform:translateY(-50%);color:var(--wa-sub);pointer-events:none}
+.wa-bdlg-search input{padding-left:32px}
 .wa-pick{margin:0;padding:0;list-style:none;max-height:min(44vh,320px);overflow:auto}
 .wa-pick li{margin:0;padding:0}
 .wa-pick-row{display:flex;align-items:center;gap:10px;width:100%;padding:6px 8px;border:0;border-radius:8px;background:transparent;color:inherit;text-align:left;cursor:pointer}
@@ -285,9 +285,9 @@ a.wa-lp:hover{background:color-mix(in srgb,var(--wa-text) 11%,transparent)}
 .wa-pick-t{display:flex;flex-direction:column;min-width:0}
 .wa-pick-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14.5px;font-weight:500}
 .wa-pick-t span{font-size:12.5px;color:var(--wa-sub)}
-.wa-dlg-none{padding:18px;text-align:center;font-size:13px;color:var(--wa-sub)}
-.wa-dlg-count{margin-right:auto;align-self:center;font-size:13px;color:var(--wa-sub)}
-.wa-dlg-quote{margin:0;padding:8px 10px;border-left:3px solid var(--wa-green);border-radius:6px;background:var(--wa-pill);font-size:13px;line-height:18px;color:var(--wa-sub);overflow-wrap:anywhere}
+.wa-bdlg-none{padding:18px;text-align:center;font-size:13px;color:var(--wa-sub)}
+.wa-bdlg-count{margin-right:auto;align-self:center;font-size:13px;color:var(--wa-sub)}
+.wa-bdlg-quote{margin:0;padding:8px 10px;border-left:3px solid var(--wa-green);border-radius:6px;background:var(--wa-pill);font-size:13px;line-height:18px;color:var(--wa-sub);overflow-wrap:anywhere}
 .wa-form{display:flex;flex-direction:column;gap:8px}
 .wa-lbl{font-size:12.5px;font-weight:500;color:var(--wa-sub)}
 .wa-optrow{display:flex;align-items:center;gap:6px}

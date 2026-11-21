@@ -117,7 +117,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     ta.current.setSelectionRange(c, c);
     setCursor(c);
   }, [value]);
-  useLayoutEffect(() => { if (reply || editing) ta.current?.focus(); }, [reply, editing?.id]);
+  useLayoutEffect(() => {
+    if (!reply && !editing) return;
+    ta.current?.focus();
+    // Picked from a message menu: the closing menu hands focus back to its button a moment later, so take it again.
+    const timers = [60, 200].map((ms) => setTimeout(() => { if (!rootEl.current?.querySelector("[role=menu],[role=dialog]")) ta.current?.focus(); }, ms));
+    return () => timers.forEach(clearTimeout);
+  }, [reply, editing?.id]);
   useEffect(() => { if (editing && value !== editing.body) p.onChange(editing.body); }, [editing?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const root = ta.current?.closest<HTMLElement>(".wa-root");

@@ -33,6 +33,10 @@ export const INBOX_CSS = `
 @container (max-width:1000px){.wa-side{position:absolute;inset:0;width:auto;border-left:0;z-index:5}}
 .wa-overlay{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;min-height:0;background:var(--wa-panel)}
 .wa-list-pane{position:relative}
+.wa-bdlg button[data-variant="default"],.wa-bdlg [data-floq-variant="default"]{background:var(--wa-green);background-image:none;color:#fff;border-color:transparent;box-shadow:none}
+.wa-bdlg button[data-variant="default"]:hover:not(:disabled){background:color-mix(in srgb,var(--wa-green) 88%,#000)}
+.wa-bdlg button[data-variant="default"]:disabled{opacity:.5}
+.wa-bdlg [data-slot="input"]:focus-visible,.wa-bdlg [data-slot="textarea"]:focus-visible{border-color:var(--wa-green);box-shadow:0 0 0 2px color-mix(in srgb,var(--wa-green) 35%,transparent);outline:0}
 .wa-gate{position:absolute;inset:0;display:flex;flex-direction:column;min-height:0;background:var(--wa-bar);overflow:auto}
 .wa-gate>:last-child{flex:1;min-height:0;position:relative}
 .wa-root .wa-gate-back{align-self:flex-start;margin:10px 12px 0;color:var(--wa-sub);gap:6px}

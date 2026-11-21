@@ -171,7 +171,7 @@ function StatusComposer({ open, onOpenChange, onPosted }: { open: boolean; onOpe
   const ok = mode === "text" ? !!text.trim() : !!file;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="wa-portal wa-dlg wa-sc">
+      <DialogContent className="wa-portal wa-mdlg wa-sc">
         <DialogHeader><DialogTitle>New status</DialogTitle><DialogDescription>Visible to your contacts for 24 hours.</DialogDescription></DialogHeader>
         <div className="wa-sc-tabs" role="tablist" aria-label="Status type">
           <button type="button" role="tab" aria-selected={mode === "text"} className="wa-chip" onClick={() => setMode("text")}><IconTextT />Text</button>

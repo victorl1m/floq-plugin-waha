@@ -163,7 +163,7 @@ export function LabelPicker({ chat, open, onOpenChange }: { chat: Pick<Chat, "ch
         </Tooltip>
       )}
       <Dialog open={isOpen} onOpenChange={setOpen}>
-        <DialogContent className="wa-portal wa-dlg">
+        <DialogContent className="wa-portal wa-mdlg">
           <DialogHeader><DialogTitle>Labels</DialogTitle><DialogDescription>Tick the labels this chat should have.</DialogDescription></DialogHeader>
           <div className="wa-llist" role="group" aria-label="Labels of this chat">
             {picked === null ? <div className="wa-lempty"><Spinner />Loading</div> : labels.length === 0 && mode.kind !== "new" ? <div className="wa-lempty">No labels yet. Create the first one below.</div> : labels.map((l) => (

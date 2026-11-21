@@ -30,19 +30,19 @@ export const MORE_CSS = `
 .wa-lmenu-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wa-lmenu-check{margin-left:auto;width:16px;height:16px;color:var(--wa-green-text);flex:none}
 
-.wa-dlg{width:min(440px,calc(100vw - 24px));max-width:none;max-height:min(640px,calc(100vh - 32px));overflow:auto;padding:22px 20px 16px;gap:14px;background:var(--wa-panel);color:var(--wa-text);border:1px solid var(--wa-line);border-radius:18px}
-.wa-dlg [data-slot="dialog-title"]{margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em;line-height:1.25;color:var(--wa-text)}
-.wa-dlg [data-slot="dialog-description"]{margin:2px 0 0;font-size:13.5px;line-height:1.4;color:var(--wa-sub)}
-.wa-dlg [data-slot="dialog-header"]{text-align:left}
-.wa-dlg input[type="text"],.wa-dlg [data-slot="input"]{width:100%;height:40px;padding:0 12px;border:1px solid var(--wa-line);border-radius:10px;background:var(--wa-field);color:var(--wa-text);font:inherit;font-size:14.5px;box-shadow:none}
-.wa-dlg [data-slot="input"]:focus-visible,.wa-dlg input[type="text"]:focus-visible{outline:0;border-color:var(--wa-green);box-shadow:0 0 0 1px var(--wa-green)}
-.wa-dlg .wa-dbtn{height:36px;padding:0 16px;border-radius:999px;font-size:14px;font-weight:500;color:var(--wa-green-text);background:transparent;border:0;box-shadow:none;cursor:pointer}
-.wa-dlg .wa-dbtn:hover:not(:disabled){background:color-mix(in srgb,var(--wa-green) 12%,transparent);color:var(--wa-green-text)}
-.wa-dlg .wa-dbtn:disabled{opacity:.5;cursor:default}
-.wa-dlg .wa-dprimary,.wa-dlg .wa-dprimary:hover:not(:disabled){background:var(--wa-green);color:#fff}
-.wa-dlg .wa-dprimary:hover:not(:disabled){background:color-mix(in srgb,var(--wa-green) 88%,#000)}
-.wa-dlg .wa-ddanger,.wa-dlg .wa-ddanger:hover:not(:disabled){color:var(--wa-danger)}
-.wa-dlg .wa-dbtn:focus-visible,.wa-lcheck:focus-visible,.wa-lmini:focus-visible,.wa-ladd:focus-visible,.wa-swatch:focus-visible,.wa-sc-drop:focus-visible{outline:2px solid var(--wa-green);outline-offset:1px}
+.wa-mdlg{width:min(440px,calc(100vw - 24px));max-width:none;max-height:min(640px,calc(100vh - 32px));overflow:auto;padding:22px 20px 16px;gap:14px;background:var(--wa-panel);color:var(--wa-text);border:1px solid var(--wa-line);border-radius:18px}
+.wa-mdlg [data-slot="dialog-title"]{margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em;line-height:1.25;color:var(--wa-text)}
+.wa-mdlg [data-slot="dialog-description"]{margin:2px 0 0;font-size:13.5px;line-height:1.4;color:var(--wa-sub)}
+.wa-mdlg [data-slot="dialog-header"]{text-align:left}
+.wa-mdlg input[type="text"],.wa-mdlg [data-slot="input"]{width:100%;height:40px;padding:0 12px;border:1px solid var(--wa-line);border-radius:10px;background:var(--wa-field);color:var(--wa-text);font:inherit;font-size:14.5px;box-shadow:none}
+.wa-mdlg [data-slot="input"]:focus-visible,.wa-mdlg input[type="text"]:focus-visible{outline:0;border-color:var(--wa-green);box-shadow:0 0 0 1px var(--wa-green)}
+.wa-mdlg .wa-dbtn{height:36px;padding:0 16px;border-radius:999px;font-size:14px;font-weight:500;color:var(--wa-green-text);background:transparent;border:0;box-shadow:none;cursor:pointer}
+.wa-mdlg .wa-dbtn:hover:not(:disabled){background:color-mix(in srgb,var(--wa-green) 12%,transparent);color:var(--wa-green-text)}
+.wa-mdlg .wa-dbtn:disabled{opacity:.5;cursor:default}
+.wa-mdlg .wa-dprimary,.wa-mdlg .wa-dprimary:hover:not(:disabled){background:var(--wa-green);color:#fff}
+.wa-mdlg .wa-dprimary:hover:not(:disabled){background:color-mix(in srgb,var(--wa-green) 88%,#000)}
+.wa-mdlg .wa-ddanger,.wa-mdlg .wa-ddanger:hover:not(:disabled){color:var(--wa-danger)}
+.wa-mdlg .wa-dbtn:focus-visible,.wa-lcheck:focus-visible,.wa-lmini:focus-visible,.wa-ladd:focus-visible,.wa-swatch:focus-visible,.wa-sc-drop:focus-visible{outline:2px solid var(--wa-green);outline-offset:1px}
 .wa-lcheck:focus-visible,.wa-ladd:focus-visible{outline-offset:-2px}
 .wa-dfoot{display:flex;flex-direction:row;justify-content:flex-end;gap:8px;margin-top:2px}
 .wa-llist{display:flex;flex-direction:column;gap:2px;margin:0 -6px;padding:0 6px}
@@ -191,6 +191,6 @@ export const MORE_CSS = `
   .wa-story-text{padding:24px 44px}
   .wa-swatches{grid-template-columns:repeat(10,1fr);gap:4px}
 }
-@media (max-width:480px){.wa-call-text small{display:none}.wa-swatches{gap:4px}.wa-dlg{padding:18px 14px 12px}}
+@media (max-width:480px){.wa-call-text small{display:none}.wa-swatches{gap:4px}.wa-mdlg{padding:18px 14px 12px}}
 @media (prefers-reduced-motion:reduce){.wa-call,.wa-call-badge{animation:none}}
 `;

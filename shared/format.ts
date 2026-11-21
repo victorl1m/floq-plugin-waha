@@ -203,7 +203,8 @@ export function canEdit(m: Pick<Message, "fromMe" | "type" | "sentAt" | "pending
   if (!m.fromMe || m.pending || m.failed || m.deleted) return false;
   if ((m.type ?? "chat") !== "chat") return false;
   const t = new Date(m.sentAt).getTime();
-  return Number.isFinite(t) && now - t >= 0 && now - t < EDIT_WINDOW_MS;
+  // `now` ticks once a minute, so a message just sent can be a little ahead of it.
+  return Number.isFinite(t) && now - t > -5 * 60_000 && now - t < EDIT_WINDOW_MS;
 }
 
 export const isMediaType = (m: Pick<Message, "type" | "media">) => ["image", "video", "audio", "ptt", "document", "sticker"].includes(m.type ?? "") || Boolean(m.media && !m.type);

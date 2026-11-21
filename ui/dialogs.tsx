@@ -13,9 +13,9 @@ const unsupported = (e: unknown, what: string) => {
   else toast.error(what, { description: errorText(e) });
 };
 type Open = { open: boolean; onOpenChange: (v: boolean) => void };
-/** Dialog content lives in a portal outside the inbox root: wa-dlg carries the palette variables there. */
+/** Dialog content lives in a portal outside the inbox root: wa-bdlg carries the palette variables there. */
 const Shell = ({ title, description, children, footer, className }: { title: string; description?: string; children: ReactNode; footer?: ReactNode; className?: string }) => (
-  <DialogContent className={cn("wa-dlg", className)} showCloseButton>
+  <DialogContent className={cn("wa-bdlg", className)} showCloseButton>
     <DialogHeader><DialogTitle>{title}</DialogTitle>{description ? <DialogDescription>{description}</DialogDescription> : <DialogDescription className="sr-only">{title}</DialogDescription>}</DialogHeader>
     {children}
     {footer && <DialogFooter>{footer}</DialogFooter>}
@@ -42,7 +42,7 @@ export function DeleteDialog({ message, open, onOpenChange, onDelete }: Open & {
           <Button type="button" variant={everyone ? "outline" : "destructive"} onClick={() => void go(false)} disabled={Boolean(busy)}>{busy === "me" ? <Spinner /> : null}Delete for me</Button>
           {everyone && <Button type="button" variant="destructive" onClick={() => void go(true)} disabled={Boolean(busy)}>{busy === "all" ? <Spinner /> : null}Delete for everyone</Button>}
         </>}>
-        {message?.body ? <p className="wa-dlg-quote">{message.body.slice(0, 160)}</p> : null}
+        {message?.body ? <p className="wa-bdlg-quote">{message.body.slice(0, 160)}</p> : null}
       </Shell>
     </Dialog>
   );
@@ -68,11 +68,11 @@ export function ForwardDialog({ message, open, onOpenChange, onForward }: Open &
     <Dialog open={open} onOpenChange={onOpenChange}>
       <Shell title="Forward message" description={message?.body ? message.body.slice(0, 80) : "Pick up to " + FORWARD_MAX + " chats."}
         footer={<>
-          <span className="wa-dlg-count" aria-live="polite">{sel.length} of {FORWARD_MAX} selected</span>
+          <span className="wa-bdlg-count" aria-live="polite">{sel.length} of {FORWARD_MAX} selected</span>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button type="button" disabled={!sel.length || busy} onClick={() => void send()}>{busy ? <Spinner /> : null}Forward</Button>
         </>}>
-        <div className="wa-dlg-search"><IconSearch /><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chats" aria-label="Search chats" autoComplete="off" /></div>
+        <div className="wa-bdlg-search"><IconSearch /><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chats" aria-label="Search chats" autoComplete="off" /></div>
         <ul className="wa-pick" role="listbox" aria-multiselectable="true" aria-label="Chats">
           {list.map((c) => {
             const on = sel.includes(c.chatId), full = !on && sel.length >= FORWARD_MAX;
@@ -86,7 +86,7 @@ export function ForwardDialog({ message, open, onOpenChange, onForward }: Open &
               </li>
             );
           })}
-          {!list.length && <li className="wa-dlg-none">No chats found</li>}
+          {!list.length && <li className="wa-bdlg-none">No chats found</li>}
         </ul>
       </Shell>
     </Dialog>
@@ -258,7 +258,7 @@ export function ContactDialog({ open, onOpenChange, onSend }: Open & { onSend: (
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <Shell title="Send contact" description="Pick up to 5 contacts."
-        footer={<><span className="wa-dlg-count">{sel.length} selected</span><Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="button" disabled={!sel.length || busy} onClick={() => void send()}>{busy ? <Spinner /> : null}Send</Button></>}>
+        footer={<><span className="wa-bdlg-count">{sel.length} selected</span><Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="button" disabled={!sel.length || busy} onClick={() => void send()}>{busy ? <Spinner /> : null}Send</Button></>}>
         {sel.length > 0 && (
           <div className="wa-bchosen" aria-label="Selected contacts">
             {sel.map((s) => <span key={s.phone} className="wa-btag">{s.name}<button type="button" aria-label={"Remove " + s.name} onClick={() => setSel((x) => x.filter((y) => y.phone !== s.phone))}><IconClose /></button></span>)}
@@ -276,7 +276,7 @@ export function ContactDialog({ open, onOpenChange, onSend }: Open & { onSend: (
           </form>
         ) : (
           <>
-            <div className="wa-dlg-search"><IconSearch /><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search contacts" aria-label="Search contacts" autoComplete="off" autoFocus /></div>
+            <div className="wa-bdlg-search"><IconSearch /><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search contacts" aria-label="Search contacts" autoComplete="off" autoFocus /></div>
             <ul className="wa-pick" role="listbox" aria-multiselectable="true" aria-label="Contacts" aria-busy={loading}>
               {found.map((c) => (
                 <li key={c.phone} role="option" aria-selected={has(c.phone)}>
@@ -287,7 +287,7 @@ export function ContactDialog({ open, onOpenChange, onSend }: Open & { onSend: (
                   </button>
                 </li>
               ))}
-              {!found.length && <li className="wa-dlg-none">{loading ? "Searching…" : "No contacts found"}</li>}
+              {!found.length && <li className="wa-bdlg-none">{loading ? "Searching…" : "No contacts found"}</li>}
             </ul>
             {err && <p className="wa-err" role="alert"><IconAlertCircle />{err}</p>}
             <button type="button" className="wa-linkbtn wa-self" onClick={() => { setManual(true); setErr(""); }}>Enter a name and number instead</button>
@@ -316,7 +316,7 @@ export function MessageInfoDialog({ message, open, onOpenChange }: Open & { mess
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <Shell title="Message info" description={message?.body ? message.body.slice(0, 100) : undefined}>
-        {err ? <p className="wa-err" role="alert"><IconAlertCircle />{err}</p> : !info ? <div className="wa-dlg-none"><Spinner /></div> : (
+        {err ? <p className="wa-err" role="alert"><IconAlertCircle />{err}</p> : !info ? <div className="wa-bdlg-none"><Spinner /></div> : (
           <dl className="wa-minfo">
             <dt>Sent</dt><dd>{fullDate(info.sentAt)}</dd>
             {message?.fromMe && state && <><dt>Delivery</dt><dd>{state === "read" ? (info.ack === 4 ? "Read and played" : "Read") : ACK_LABEL[state]}</dd></>}
@@ -371,7 +371,7 @@ export function ChatSearch({ chat, now, onJump, onClose }: { chat: Chat; now?: D
       </div>
       {(res !== null || err) && (
         <ul className="wa-sb-res" aria-label="Search results">
-          {err ? <li className="wa-dlg-none">{err}</li> : res!.length === 0 ? <li className="wa-dlg-none">No messages found</li> : res!.map((m) => (
+          {err ? <li className="wa-bdlg-none">{err}</li> : res!.length === 0 ? <li className="wa-bdlg-none">No messages found</li> : res!.map((m) => (
             <li key={m.id}>
               <button type="button" onClick={() => onJump(m.id)}>
                 <span className="wa-sb-d">{dayLabel(m.sentAt, ref)} · {timeOf(m.sentAt)}</span>
