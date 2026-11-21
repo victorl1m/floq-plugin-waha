@@ -22,4 +22,25 @@ export const migrations: PluginMigration[] = [
       CREATE INDEX {{p}}messages_chat_idx ON {{p}}messages (user_id, chat_id, sent_at DESC);
     `,
   },
+  {
+    id: "002_contacts_reads",
+    sql: `
+      ALTER TABLE {{p}}messages ADD COLUMN sender_name TEXT NOT NULL DEFAULT '';
+      CREATE TABLE {{p}}contacts (
+        user_id TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        phone TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, chat_id)
+      );
+      CREATE TABLE {{p}}chat_reads (
+        user_id TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        read_at TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY (user_id, chat_id)
+      );
+      INSERT INTO {{p}}chat_reads (user_id, chat_id, read_at) SELECT DISTINCT user_id, chat_id, now() FROM {{p}}messages;
+    `,
+  },
 ];

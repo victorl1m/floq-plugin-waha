@@ -40,25 +40,55 @@ export default definePlugin({
     const textOf = (v: unknown) => { if (typeof v !== "string" || !v.trim() || v.length > TEXT_MAX) throw ctx.httpError(400, "invalid_text", `text must be 1-${TEXT_MAX} characters`); return v; };
     const asObject = (b: unknown): Record<string, unknown> => (b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {});
 
+    const kindOf = (id: string): "user" | "group" | "other" => (id.endsWith("@g.us") ? "group" : /@(c\.us|s\.whatsapp\.net|lid)$/.test(id) ? "user" : "other");
+    const digitsOf = (id: string): string | null => { const m = /^(\d{8,15})@(c\.us|s\.whatsapp\.net)$/.exec(id); return m ? m[1] : null; };
+
     async function listChats(userId: string) {
       const r = await ctx.db.query(
-        `SELECT chat_id, MAX(sent_at) AS last_at, COUNT(*)::int AS total, (ARRAY_AGG(body ORDER BY sent_at DESC))[1] AS last_body
-           FROM {{p}}messages WHERE user_id = $1 GROUP BY chat_id ORDER BY MAX(sent_at) DESC LIMIT 100`, [userId]);
-      return { chats: r.rows.map((x) => ({ chatId: x.chat_id, lastBody: String(x.last_body ?? "").slice(0, 200), lastAt: new Date(x.last_at as string).toISOString(), total: x.total })) };
+        `WITH agg AS (
+           SELECT chat_id, MAX(sent_at) AS last_at, COUNT(*)::int AS total FROM {{p}}messages WHERE user_id = $1 GROUP BY chat_id ORDER BY MAX(sent_at) DESC LIMIT 100)
+         SELECT a.chat_id, a.last_at, a.total, l.body AS last_body, l.from_me AS last_from_me, l.has_media AS last_has_media, c.name AS name, c.phone AS phone,
+                (SELECT COUNT(*)::int FROM {{p}}messages u WHERE u.user_id = $1 AND u.chat_id = a.chat_id AND u.from_me = FALSE AND (r.read_at IS NULL OR u.created_at > r.read_at)) AS unread
+           FROM agg a
+           LEFT JOIN LATERAL (SELECT body, from_me, has_media FROM {{p}}messages WHERE user_id = $1 AND chat_id = a.chat_id ORDER BY sent_at DESC, id DESC LIMIT 1) l ON TRUE
+           LEFT JOIN {{p}}contacts c ON c.user_id = $1 AND c.chat_id = a.chat_id
+           LEFT JOIN {{p}}chat_reads r ON r.user_id = $1 AND r.chat_id = a.chat_id
+          ORDER BY a.last_at DESC`, [userId]);
+      return { chats: r.rows.map((x) => {
+        const chatId = String(x.chat_id);
+        return {
+          chatId, kind: kindOf(chatId), name: x.name ? String(x.name) : null, phone: (x.phone ? String(x.phone) : null) ?? digitsOf(chatId),
+          lastBody: String(x.last_body ?? "").slice(0, 200), lastFromMe: x.last_from_me === true, lastHasMedia: x.last_has_media === true,
+          lastAt: new Date(x.last_at as string).toISOString(), total: Number(x.total) || 0, unread: Number(x.unread) || 0,
+        };
+      }) };
     }
 
     async function listMessages(userId: string, chatId: string, limit: unknown) {
       const n = Math.min(200, Math.max(1, Number.parseInt(String(limit ?? "50"), 10) || 50));
       const r = await ctx.db.query(
-        `SELECT msg_id, from_me, sender, body, has_media, sent_at FROM (
+        `SELECT msg_id, from_me, sender, sender_name, body, has_media, sent_at FROM (
            SELECT * FROM {{p}}messages WHERE user_id = $1 AND chat_id = $2 ORDER BY sent_at DESC, id DESC LIMIT $3) t ORDER BY sent_at ASC, id ASC`, [userId, chatId, n]);
-      return { messages: r.rows.map((x) => ({ id: x.msg_id, fromMe: x.from_me, sender: x.sender, body: String(x.body ?? ""), hasMedia: x.has_media, sentAt: new Date(x.sent_at as string).toISOString() })) };
+      return { messages: r.rows.map((x) => ({ id: x.msg_id, fromMe: x.from_me, sender: x.sender, senderName: String(x.sender_name ?? ""), body: String(x.body ?? ""), hasMedia: x.has_media, sentAt: new Date(x.sent_at as string).toISOString() })) };
     }
 
-    async function store(userId: string, m: { session: string; chatId: string; msgId: string; fromMe: boolean; sender: string; body: string; hasMedia: boolean; sentAt: Date }): Promise<boolean> {
+    async function markRead(userId: string, chatId: string) {
+      await ctx.db.query(
+        `INSERT INTO {{p}}chat_reads (user_id, chat_id, read_at) VALUES ($1,$2,now()) ON CONFLICT (user_id, chat_id) DO UPDATE SET read_at = now()`, [userId, chatId]);
+    }
+
+    async function upsertContact(userId: string, chatId: string, name: string, phone: string) {
+      if (!name && !phone) return;
+      await ctx.db.query(
+        `INSERT INTO {{p}}contacts (user_id, chat_id, name, phone) VALUES ($1,$2,$3,$4)
+         ON CONFLICT (user_id, chat_id) DO UPDATE SET name = CASE WHEN EXCLUDED.name <> '' THEN EXCLUDED.name ELSE {{p}}contacts.name END,
+           phone = CASE WHEN EXCLUDED.phone <> '' THEN EXCLUDED.phone ELSE {{p}}contacts.phone END, updated_at = now()`, [userId, chatId, name, phone]);
+    }
+
+    async function store(userId: string, m: { session: string; chatId: string; msgId: string; fromMe: boolean; sender: string; senderName: string; body: string; hasMedia: boolean; sentAt: Date }): Promise<boolean> {
       const r = await ctx.db.query(
-        `INSERT INTO {{p}}messages (user_id, session, chat_id, msg_id, from_me, sender, body, has_media, sent_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         ON CONFLICT (session, msg_id) DO NOTHING RETURNING id`, [userId, m.session, m.chatId, m.msgId, m.fromMe, m.sender, m.body, m.hasMedia, m.sentAt.toISOString()]);
+        `INSERT INTO {{p}}messages (user_id, session, chat_id, msg_id, from_me, sender, sender_name, body, has_media, sent_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (session, msg_id) DO NOTHING RETURNING id`, [userId, m.session, m.chatId, m.msgId, m.fromMe, m.sender, m.senderName, m.body, m.hasMedia, m.sentAt.toISOString()]);
       return r.rowCount > 0;
     }
 
@@ -70,7 +100,8 @@ export default definePlugin({
       try { id = await sendText(ctx.fetchUserUrl, userId, c.base!, c.apiKey!, c.session, chatId, text); }
       catch (error) { ctx.log.warn("send failed", { status: error instanceof WahaError ? error.status : 0 }); throw ctx.httpError(502, "waha_unavailable", "WAHA could not send the message."); }
       const msgId = id ?? `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      await store(userId, { session: c.session, chatId, msgId, fromMe: true, sender: "me", body: text, hasMedia: false, sentAt: new Date() });
+      await store(userId, { session: c.session, chatId, msgId, fromMe: true, sender: "me", senderName: "", body: text, hasMedia: false, sentAt: new Date() });
+      await markRead(userId, chatId);
       ctx.events.publish(userId, "message", { chatId, fromMe: true });
       return { status: "sent" as const, id: msgId };
     }
@@ -83,6 +114,7 @@ export default definePlugin({
     });
     ctx.routes.get("/chats", async ({ userId }) => { await owner(userId); return listChats(userId); });
     ctx.routes.get("/messages", async ({ userId, query }) => { await owner(userId); return listMessages(userId, chatIdOf(query.chatId), query.limit); });
+    ctx.routes.post("/read", async ({ userId, body }) => { await owner(userId); await markRead(userId, chatIdOf(asObject(body).chatId)); return { ok: true }; });
     ctx.routes.post("/send", async ({ userId, body }) => {
       await owner(userId);
       const b = asObject(body);
@@ -183,9 +215,10 @@ export default definePlugin({
       if (!o) return { ok: true, ignored: true };
       if (msg.session !== sessionName((await ctx.settings.get(o)).session)) return { ok: true, ignored: true };
       const inserted = await store(o, msg);
+      if (!msg.fromMe && !msg.chatId.endsWith("@g.us")) await upsertContact(o, msg.chatId, msg.senderName, msg.senderPhone);
       if (inserted && !msg.fromMe) {
         ctx.events.publish(o, "message", { chatId: msg.chatId, fromMe: false, preview: msg.body.slice(0, 120) });
-        ctx.toast(o, { title: `WhatsApp: ${msg.sender}`, description: msg.body.slice(0, 120) || (msg.hasMedia ? "Sent a file" : "") });
+        ctx.toast(o, { title: `WhatsApp: ${msg.senderName || (msg.senderPhone ? formatPhone(msg.senderPhone) : "") || "new message"}`, description: msg.body.slice(0, 120) || (msg.hasMedia ? "Sent a file" : "") });
       }
       return { ok: true };
     }, {

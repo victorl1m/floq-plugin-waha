@@ -44,9 +44,39 @@ export function verifyHmac(rawBody: Uint8Array, headers: Record<string, string>,
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export interface StoredMessage { /** WAHA `payload.source`: "app" | "api" | "" (unknown). */ source?: string; session: string; chatId: string; msgId: string; fromMe: boolean; sender: string; body: string; hasMedia: boolean; sentAt: Date }
+export interface StoredMessage { /** WAHA `payload.source`: "app" | "api" | "" (unknown). */ source?: string; session: string; chatId: string; msgId: string; fromMe: boolean; sender: string; senderName: string; senderPhone: string; body: string; hasMedia: boolean; sentAt: Date }
 
 const s = (v: unknown, max: number) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "").slice(0, max);
+
+const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+const ALT_JID = /^(\d{8,15})(:\d+)?@(c\.us|s\.whatsapp\.net)$/;
+
+function displayName(p: Record<string, unknown>): string {
+  const d = rec(p._data);
+  for (const v of [d.notifyName, d.pushName, rec(d.Info).PushName, p.notifyName, p.pushName]) {
+    if (typeof v !== "string") continue;
+    const t = v.replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim().slice(0, 80);
+    if (t) return t;
+  }
+  return "";
+}
+
+function senderPhoneOf(chatId: string, p: Record<string, unknown>): string {
+  const own = /^(\d{8,15})@(c\.us|s\.whatsapp\.net)$/.exec(chatId);
+  if (own) return own[1];
+  if (!chatId.endsWith("@lid")) return "";
+  const d = rec(p._data);
+  for (const v of [rec(d.key).remoteJidAlt, rec(d.key).senderPn, rec(d.Info).SenderAlt, d.senderPn]) {
+    const m = typeof v === "string" ? ALT_JID.exec(v) : null;
+    if (m) return m[1];
+  }
+  return "";
+}
+
+function participantOf(p: Record<string, unknown>): string {
+  for (const v of [p.participant, rec(rec(p._data).key).participant, p.author]) if (typeof v === "string" && CHAT_ID.test(v)) return v;
+  return "";
+}
 
 /** A WAHA `message` / `message.any` event to a row, or null when it is another event or malformed. The chat is the other side of the conversation. */
 export function parseWebhook(json: unknown): StoredMessage | null {
@@ -61,7 +91,8 @@ export function parseWebhook(json: unknown): StoredMessage | null {
   if (!CHAT_ID.test(chatId) || !msgId) return null;
   const seconds = Number(p.timestamp);
   return {
-    source: s(p.source, 16).toLowerCase(), session: s(e.session, 64) || "default", chatId, msgId, fromMe, sender: fromMe ? "me" : from,
+    source: s(p.source, 16).toLowerCase(), session: s(e.session, 64) || "default", chatId, msgId, fromMe, sender: fromMe ? "me" : (chatId.endsWith("@g.us") && participantOf(p)) || from,
+    senderName: fromMe ? "" : displayName(p), senderPhone: fromMe ? "" : senderPhoneOf(chatId, p),
     body: s(p.body, 8000), hasMedia: p.hasMedia === true,
     sentAt: new Date(Number.isFinite(seconds) && seconds > 0 ? seconds * (seconds < 1e12 ? 1000 : 1) : Date.now()),
   };
