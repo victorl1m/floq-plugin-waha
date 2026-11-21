@@ -10,7 +10,7 @@ import { WaContext, type Api, type Wa } from "./context";
 import { MessageLog, type MessageLogHandle } from "./message-log";
 import { CSS } from "./styles";
 
-const q = new URLSearchParams(location.search);
+const q = new URLSearchParams(typeof location === "undefined" ? "" : location.search);
 const MIN = 60_000, now0 = Date.now();
 const ago = (min: number) => new Date(now0 - min * MIN).toISOString();
 const GROUP = q.get("chat") === "group";
