@@ -70,7 +70,7 @@ export function createHistory(core: Core, identity: Identity, store: Store): His
   const { ctx, host } = core;
   const q = (sql: string, params: unknown[]) => ctx.db.query(sql, params);
   let paused = false;
-  const active = new Map<string, { cancel: boolean; silent: boolean }>();
+  const active = new Map<string, { cancel: boolean; silent: boolean; done?: Promise<void> }>();
   const tried = new Map<string, { at: number; error: string }>();
   const pending = new Map<string, boolean>();
   const follow = new Map<string, number[]>();
@@ -299,9 +299,9 @@ export function createHistory(core: Core, identity: Identity, store: Store): His
           await q(`UPDATE {{p}}history_chats SET state = 'capped', updated_at = now() WHERE user_id = $1 AND session = $S AND state = 'pending'`, [userId]);
           break;
         }
-        const r = await importChat(userId, row, ctl, { session, startedAt, perChat: lim.perChat, room: lim.total - j.seen, quick: false, onPage: async (seen, added) => { j = { ...j, seen: j.seen + seen, messages: j.messages + added }; await put(userId, j); } });
+        const r = await importChat(userId, row, ctl, { session, startedAt, perChat: lim.perChat, room: lim.total - j.seen, quick: false, onPage: async (seen, added) => { j = { ...j, seen: j.seen + seen, messages: j.messages + added }; if (!ctl.cancel) await put(userId, j); } });
         if (r.stopped) continue;
-        j = { ...j, chatsDone: j.chatsDone + 1 }; await put(userId, j);
+        j = { ...j, chatsDone: j.chatsDone + 1 }; if (!ctl.cancel) await put(userId, j);
         if (j.chatsDone % 10 === 0) core.publish(userId, "chats", {});
       }
       // Ids met on the way that are still unlinked lids.
@@ -312,7 +312,7 @@ export function createHistory(core: Core, identity: Identity, store: Store): His
     } catch (e) {
       ctx.log.warn("history import failed", { error: e instanceof Error ? e.message : "error" });
       await stop("failed", failText(e)).catch(() => undefined);
-    } finally { active.delete(userId); }
+    } finally { if (active.get(userId) === ctl) active.delete(userId); }
   }
 
   /** A quiet pass after a fresh link: chats WAHA got from the phone since, and the newer pages of the known ones. Shows nothing but new chats. */
@@ -336,19 +336,21 @@ export function createHistory(core: Core, identity: Identity, store: Store): His
       if (now.state === "done" && (added || total !== now.chatsTotal)) await put(userId, { ...now, chatsTotal: total, chatsDone: total, messages: now.messages + added });
       core.publish(userId, "chats", {});
     } catch (e) { ctx.log.warn("history follow-up failed", { error: e instanceof Error ? e.message : "error" }); }
-    finally { active.delete(userId); }
+    finally { if (active.get(userId) === ctl) active.delete(userId); }
   }
 
   function launch(userId: string) {
     if (active.has(userId) || paused) return;
-    const ctl = { cancel: false, silent: false };
+    const ctl: { cancel: boolean; silent: boolean; done?: Promise<void> } = { cancel: false, silent: false };
     active.set(userId, ctl);
-    core.bg(run(userId, ctl));
+    ctl.done = run(userId, ctl);
+    core.bg(ctl.done);
   }
   async function begin(userId: string, followUps: boolean): Promise<HistoryStatus> {
     const running = active.get(userId);
-    if (running && !running.silent) return self.status(userId);
-    if (running) { running.cancel = true; active.delete(userId); }
+    if (running && !running.silent && !running.cancel) return self.status(userId);
+    // A cancelled import or a quiet pass still finishing its page: it ends first, so it cannot write into the new one.
+    if (running) { running.cancel = true; await running.done?.catch(() => undefined); active.delete(userId); }
     await q(`DELETE FROM {{p}}history_chats WHERE user_id = $1 AND session = $S`, [userId]);
     const at = Date.now(), times = followUps ? FOLLOW_UP_MS.map((ms) => at + ms) : [];
     const j: Job = { ...fresh(), state: "running", phase: "contacts", startedAt: new Date(at).toISOString(), ...(times.length ? { follow: times } : {}) };
@@ -484,9 +486,10 @@ export function createHistory(core: Core, identity: Identity, store: Store): His
       const j = await job(scope);
       if (j.state !== "done") continue;
       await ctx.kv.set(scope, "history", { ...j, follow: rest.length ? rest : undefined });
-      const ctl = { cancel: false, silent: true };
+      const ctl: { cancel: boolean; silent: boolean; done?: Promise<void> } = { cancel: false, silent: true };
       active.set(scope, ctl);
-      core.bg(quiet(scope, ctl));
+      ctl.done = quiet(scope, ctl);
+      core.bg(ctl.done);
     }
     for (const scope of await scopes()) {
       // Cheap most of the time: the saved time is read once in a while, WAHA only when a refresh is due.
