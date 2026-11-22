@@ -1,7 +1,7 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "apiVersion": 1,
   "description": "WhatsApp in Floq on your own WAHA instance: chats, media, voice notes, reactions, groups and login by QR. The AI can read it and message you freely on your own number; messages to other people need your approval.",
   "icon": "IconBrandWhatsapp",
@@ -23,6 +23,6 @@
     "migrations",
     "settingsPanel"
   ],
-  "package": "https://github.com/victorl1m/floq-plugin-waha/releases/download/v3.0.2/waha-3.0.2.floqpkg.json",
-  "sha256": "3ea9a96afa66f0e8c6d2c301e3bdc202a391577f9f14a8653ad3a11332853264"
+  "package": "https://github.com/victorl1m/floq-plugin-waha/releases/download/v3.0.3/waha-3.0.3.floqpkg.json",
+  "sha256": "158ce1b660fd9e09f4259f473c93e88a4355f902802450589ec16ce7200b3dd8"
 }
