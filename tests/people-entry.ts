@@ -8,6 +8,7 @@ import { parseEnvelope } from "../runtime/parse.js";
 import { registerChats } from "../runtime/chats.js";
 import { registerContacts } from "../runtime/contacts.js";
 import { registerGroups } from "../runtime/groups.js";
+import { createHistory } from "../runtime/history.js";
 
 let running: ReturnType<typeof createCore> | null = null;
 export default {
@@ -18,7 +19,7 @@ export default {
     const identity = createIdentity(core, async () => ctx.kv.get("u1", "phone"));
     const store = createStore(core, identity);
     const inbox = createInbox(core, identity, store);
-    const deps = { core, identity, store, inbox };
+    const deps = { core, identity, store, inbox, history: createHistory(core, identity, store) };
     registerChats(deps); registerContacts(deps); registerGroups(deps);
     ctx.webhooks.on("events", async (req: { json(): unknown }) => {
       const e = parseEnvelope(req.json());

@@ -50,7 +50,7 @@ export function webhookFor(pluginId: string, sessions: Obj[], hmac: string | und
 export const hasWebhook = (s: Obj, template: Obj) => webhooksOf(s).some((w) => w.url === template.url);
 
 export function registerSession(deps: Deps): void {
-  const { core, identity } = deps;
+  const { core, identity, history } = deps;
   const { ctx } = core;
   const R = ctx.routes;
 
@@ -91,8 +91,10 @@ export function registerSession(deps: Deps): void {
 
   R.get("/session", async ({ userId }) => {
     await core.owner(userId);
-    const { s, status } = await read(userId);
-    let engine = "";
+    const first = await read(userId);
+    const { s } = first;
+    let status = first.status, engine = "";
+    let hist: { willImport: boolean; error: string | null } = { willImport: false, error: null };
     let webhook: { configured: boolean; events: string[]; missingEvents: string[] } | null = null;
     if (s) {
       const e = String((s.engine as Obj | undefined)?.engine ?? "").toUpperCase();
@@ -100,9 +102,14 @@ export function registerSession(deps: Deps): void {
       if (s.me) await identity.saveMe(userId, s.me);
       const hook = pickWebhook(webhooksOf(s));
       if (hook) { const events = eventsOf(hook); webhook = { configured: true, events, missingEvents: missing(events) }; }
+      // A session that waits for the scan gets its history store before the QR is shown; that restarts it, so the QR comes a moment later.
+      const p = await history.prepare(userId, s);
+      if (p.restarted) status = "STARTING";
+      hist = { willImport: p.willImport, error: p.error };
+      await history.noteStatus(userId, status);
     }
     const me = await identity.me(userId);
-    return { status: SESSION_STATUSES.includes(status as never) || ["MISSING", "UNREACHABLE", "UNAUTHORIZED"].includes(status) ? status : "STOPPED", engine, me: me ? { name: me.name, phone: displayDigits(me.id.split("@")[0]) } : null, webhook, wantedEvents: WANTED_EVENTS };
+    return { status: SESSION_STATUSES.includes(status as never) || ["MISSING", "UNREACHABLE", "UNAUTHORIZED"].includes(status) ? status : "STOPPED", engine, me: me ? { name: me.name, phone: displayDigits(me.id.split("@")[0]) } : null, webhook, wantedEvents: WANTED_EVENTS, history: hist };
   });
 
   // Extends the events of the existing webhook entry; WAHA replaces the whole config and restarts the session, so everything else is sent back unchanged.
@@ -135,7 +142,12 @@ export function registerSession(deps: Deps): void {
       if (status === "MISSING") {
         const { owner } = core.split(userId), others = new Set((await core.accounts(owner)).map((a) => a.session));
         const hook = webhookFor(ctx.pluginId, ((await list(userId)) ?? []).filter((x) => others.has(String(x.name))), await ctx.secrets.getInstall("WAHA_WEBHOOK_HMAC"));
-        err = await post("/api/sessions", { name: c.session, start: true, ...(hook ? { config: { webhooks: [hook] } } : {}) });
+        // Created with the history store on, so the chats are there after the scan. A WAHA that refuses that config gets the session without it.
+        err = await post("/api/sessions", { name: c.session, start: true, config: { ...(hook ? { webhooks: [hook] } : {}), ...history.storeConfig() } });
+        if (err && (err.status === 400 || err.status === 422)) {
+          const plain = await post("/api/sessions", { name: c.session, start: true, ...(hook ? { config: { webhooks: [hook] } } : {}) });
+          if (!plain) { await history.expect(userId, `WAHA answered ${err.status}${err.detail ? ": " + err.detail : ""}`); err = null; }
+        } else if (!err) await history.expect(userId);
         if (err && (err.status === 404 || err.status === 405)) err = (await legacy()) && err;
         else if (err && (err.status === 409 || err.status === 422 || err.status === 400)) err = (await post("/api/sessions/{session}/start")) && err; // it exists after all
       } else {
@@ -186,6 +198,8 @@ export function registerSession(deps: Deps): void {
   R.get("/session/qr", async ({ userId }) => {
     await core.owner(userId);
     let err: unknown;
+    // Never a QR for a session whose history store is still off (see /session): turning it on restarts the session.
+    if ((await history.prepare(userId)).restarted) throw notScanning();
     try {
       const r = core.obj(await core.waha(userId, "GET", "/api/{session}/auth/qr", { query: { format: "raw" } }));
       if (typeof r.value === "string" && r.value && r.value.length <= 2000) return { value: r.value };
@@ -211,6 +225,7 @@ export function registerSession(deps: Deps): void {
     await core.owner(userId);
     const digits = phoneDigits(core.obj(body).phone);
     if (!digits) throw ctx.httpError(400, "invalid_phone", "Pick the country and type the number, for example (11) 99999-9999.");
+    if ((await history.prepare(userId)).restarted) throw notScanning();
     const r = core.obj(await core.guard(() => core.waha(userId, "POST", "/api/{session}/auth/request-code", { body: { phoneNumber: digits } }), "pairing code"));
     const raw = typeof r.code === "string" ? r.code.replace(/[^0-9A-Za-z]/g, "").toUpperCase() : "";
     if (raw.length !== 8) throw ctx.httpError(502, "waha_unavailable", "WAHA did not return a pairing code.");
@@ -228,10 +243,12 @@ export function registerSession(deps: Deps): void {
   });
 
   // Live: the UI learns of every status change at once; a fresh login refreshes who is who.
-  core.on("session.status", (userId, e) => {
+  core.on("session.status", async (userId, e) => {
     const status = String(e.payload.status ?? "").toUpperCase().slice(0, 40);
     if (!status) return;
     core.publish(userId, "session", { status });
+    // Linked just now: the history import starts. Back after a break: the contacts are read again.
+    await history.noteStatus(userId, status, true);
     if (status === "WORKING") core.bg(identity.ensure(userId, true).then((changed) => { if (changed) core.publish(userId, "chats", {}); }));
   });
 }

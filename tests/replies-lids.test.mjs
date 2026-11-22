@@ -326,7 +326,7 @@ test("an agent reply still waits for approval and passes reply_to", async () => 
 });
 
 test("migrations: 003 is appended and additive", () => {
-  assert.deepEqual(migrations.map((m) => m.id), ["001_messages", "002_contacts_reads", "003_replies_lids", "004_full_inbox", "005_status", "006_accounts"]);
+  assert.deepEqual(migrations.map((m) => m.id), ["001_messages", "002_contacts_reads", "003_replies_lids", "004_full_inbox", "005_status", "006_accounts", "007_history_contacts"]);
   const sql = migrations[2].sql;
   assert.doesNotMatch(sql, /DROP|DELETE|UPDATE /i);
   for (const s of ["reply_to", "reply_body", "reply_sender", "{{p}}lid_map"]) assert.ok(sql.includes(s), s);

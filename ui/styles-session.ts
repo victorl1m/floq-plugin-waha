@@ -1,6 +1,7 @@
 // Connection screen, reconnect bar and account menu styles. Appended to the plugin stylesheet (styles.ts); colours only through the --wa-* aliases of Floq's theme tokens (theme.ts).
 // Menus and dialogs are portaled outside .wa-root, so they use the host's styling and nothing here.
-export const SESSION_CSS = `
+import { HISTORY_CSS } from "./styles-history";
+const BASE_CSS = `
 .wa-sess{position:absolute;inset:0;overflow-y:auto;display:flex;flex-direction:column;align-items:center;padding:32px 24px;color:var(--wa-text)}
 .wa-sess-in{width:100%;margin:auto 0;display:flex;flex-direction:column;align-items:center}
 .wa-sess-card{width:min(900px,100%);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:56px;align-items:center}
@@ -172,3 +173,4 @@ export const SESSION_CSS = `
 @media (prefers-reduced-motion:reduce){.wa-sess .wa-spin{animation-duration:2.4s}}
 @media (forced-colors:active){.wa-qr-box,.wa-code-box{border:1px solid CanvasText}}
 `;
+export const SESSION_CSS = BASE_CSS + HISTORY_CSS;

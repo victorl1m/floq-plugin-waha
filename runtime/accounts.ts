@@ -9,7 +9,7 @@ type Obj = Record<string, unknown>;
 /** What happened to the webhook of a session that was attached or created: it already posts to Floq, Floq added it, or it has to be set by hand. */
 export type WebhookResult = "ok" | "added" | "manual" | "unknown";
 
-export function registerAccounts({ core, identity, store }: Deps): void {
+export function registerAccounts({ core, identity, store, history }: Deps): void {
   const { ctx } = core;
   const R = ctx.routes;
   const label = (v: unknown) => core.optText(v, 40).replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim();
@@ -54,11 +54,12 @@ export function registerAccounts({ core, identity, store }: Deps): void {
       if (w?.me) await identity.saveMe(scope, w.me).catch(() => undefined);
       // The last known name and number stay on the entry, so the switcher can show them while WAHA is down or the phone is logged out.
       if (acct && (acct.name || acct.phone) && (acct.name !== a.name || (acct.phone && acct.phone !== a.phone))) { list[i] = { ...a, name: acct.name || a.name, phone: acct.phone || a.phone }; dirty = true; }
-      const chats = (await store.listChats(scope)).chats;
+      const chats = (await store.listChats(scope)).chats, imp = await history.status(scope);
       out.push({
         session: a.session, label: a.label, name: list[i].name, phone: list[i].phone || null, primary: i === 0,
         status: all.list ? (w ? statusOf(w) : "MISSING") : all.down, engine: engineOf(w),
         unread: chats.filter((c) => Number(c.unread) > 0 && c.muted !== true).length,
+        history: { state: imp.state, chatsDone: imp.chatsDone, chatsTotal: imp.chatsTotal },
       });
     }
     if (dirty) await core.saveAccounts(owner, [...list]);
@@ -112,17 +113,26 @@ export function registerAccounts({ core, identity, store }: Deps): void {
       for (let i = 1; !name; i++) { const n = i === 1 ? "default" : `floq-${i}`; if (!taken.has(n)) name = n; }
     }
     const hook = webhookFor(ctx.pluginId, all.list.filter((x) => list.some((a) => a.session === x.name)), await ctx.secrets.getInstall("WAHA_WEBHOOK_HMAC"));
+    const plain = hook ? { config: { webhooks: [hook] } } : {};
+    let refused = "";
     await core.guard(async () => {
-      try { await core.waha(userId, "POST", "/api/sessions", { body: { name, start: true, ...(hook ? { config: { webhooks: [hook] } } : {}) } }); }
+      // With the history store on, so the chats are there after the scan. A WAHA that refuses that config gets the session without it.
+      try { await core.waha(userId, "POST", "/api/sessions", { body: { name, start: true, config: { ...(hook ? { webhooks: [hook] } : {}), ...history.storeConfig() } } }); }
       catch (e) {
-        // WAHA before 2024.9 creates a session by starting it.
-        if (!(e instanceof WahaError) || (e.status !== 404 && e.status !== 405)) throw e;
-        await core.waha(userId, "POST", "/api/sessions/start", { body: { name, ...(hook ? { config: { webhooks: [hook] } } : {}) } });
+        if (!(e instanceof WahaError)) throw e;
+        if (e.status === 400 || e.status === 422) {
+          refused = `WAHA answered ${e.status}${e.detail ? ": " + e.detail : ""}`;
+          await core.waha(userId, "POST", "/api/sessions", { body: { name, start: true, ...plain } });
+        } else if (e.status === 404 || e.status === 405) {
+          // WAHA before 2024.9 creates a session by starting it.
+          await core.waha(userId, "POST", "/api/sessions/start", { body: { name, ...plain } });
+        } else throw e;
       }
     }, "new session");
     await core.saveAccounts(owner, [...list, { session: name, label: label(o.label), name: "", phone: "", addedAt: new Date().toISOString() }]);
+    await history.expect(scopeOf(owner, name), refused || undefined);
     changed(owner);
-    return { ok: true, session: name, webhook: (hook ? "added" : "unknown") as WebhookResult };
+    return { ok: true, session: name, webhook: (hook ? "added" : "unknown") as WebhookResult, history: refused ? { willImport: false, error: refused } : { willImport: true, error: null } };
   });
 
   // Label and order. `primary: true` moves the account to the front: it becomes what agents use by default.
@@ -151,6 +161,8 @@ export function registerAccounts({ core, identity, store }: Deps): void {
     if (o.deleteData === true || o.discard === true) {
       for (const t of [...SESSION_TABLES, "messages"]) await ctx.db.query(`DELETE FROM {{p}}${t} WHERE user_id = $1 AND session = $S`, [userId]);
       await ctx.kv.set(userId, "me", null);
+      await history.cancel(userId);
+      for (const k of ["history", "history:pending", "contactsSyncedAt"]) await ctx.kv.set(userId, k, null);
     }
     core.resetEngine(userId);
     changed(owner);

@@ -13,8 +13,9 @@ import { registerCalls } from "./calls.js";
 import { registerPresence } from "./presence.js";
 import { registerSession } from "./session.js";
 import { registerAccounts } from "./accounts.js";
+import type { History } from "./history.js";
 
-export interface Deps { core: Core; identity: Identity; store: Store; inbox: Inbox }
+export interface Deps { core: Core; identity: Identity; store: Store; inbox: Inbox; history: History }
 
 export function registerExtras(deps: Deps): void {
   registerChats(deps);

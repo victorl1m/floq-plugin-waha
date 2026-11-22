@@ -1,10 +1,10 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "apiVersion": 1,
   "tier": "core",
-  "description": "WhatsApp in Floq on your own WAHA instance: several accounts side by side, chats, media, voice notes, reactions, groups and login by QR. The AI can read it and message you freely on your own number; messages to other people need your approval.",
+  "description": "WhatsApp in Floq on your own WAHA instance: several accounts side by side, your chat history and contacts imported when you link, chats, media, voice notes, reactions, groups and login by QR. The AI can read it and message you freely on your own number; messages to other people need your approval.",
   "icon": "IconBrandWhatsapp",
   "scope": "install",
   "access": "owner",
@@ -39,6 +39,20 @@
       "type": "text",
       "label": "First session",
       "description": "WAHA session of the first account, read once. Defaults to \"default\". Add, attach and remove accounts from the account menu of the inbox.",
+      "required": false
+    },
+    {
+      "key": "historyPerChat",
+      "type": "number",
+      "label": "History: messages per chat",
+      "description": "How many of the newest messages of each chat the history import brings in. Default 1000.",
+      "required": false
+    },
+    {
+      "key": "historyTotal",
+      "type": "number",
+      "label": "History: messages per import",
+      "description": "Upper limit of one history import over all chats of an account. Default 50000. Media files are not downloaded by the import, only on demand.",
       "required": false
     },
     {

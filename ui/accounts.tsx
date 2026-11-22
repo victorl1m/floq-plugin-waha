@@ -6,6 +6,7 @@ import { WaContext, accountName, errorText, scopedApi, useWa, type Account, type
 import { IconArrowLeft, IconCheck, Spinner } from "./icons";
 import { IconChevronRight, IconLink } from "./icons-people";
 import { IconAlertCircle, IconPlugOff, IconQr, IconSmartphone } from "./icons-session";
+import { HistoryNote } from "./history";
 import { PairForm, QrPanel, useSessionInfo } from "./session-screen";
 import { SESSION_CSS } from "./styles-session";
 import { THEME_CSS } from "./theme";
@@ -91,6 +92,7 @@ function LinkPhone({ onLinked }: { onLinked: () => void }) {
   return (
     <div className="wa-adlg-link">
       <QrPanel />
+      <HistoryNote history={info?.history} />
       <ol className="wa-sess-steps">
         <li><span>Open <b>WhatsApp</b> on the phone you want to add</span></li>
         <li><span>Tap <b>Linked devices</b>, then <b>Link a device</b></span></li>

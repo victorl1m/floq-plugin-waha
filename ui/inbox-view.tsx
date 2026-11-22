@@ -18,6 +18,8 @@ import { PresenceLine } from "./presence";
 import { StatusView } from "./status-view";
 import { AccountMenu, SessionBanner } from "./session-banner";
 import { SessionScreen, useSessionInfo } from "./session-screen";
+import { ContactsView } from "./contacts-view";
+import { HistoryBar } from "./history";
 import { IconArrowLeft } from "./icons";
 import { subtitle } from "../shared/chat";
 import { kindOfFile, mentionsIn, type Attachment } from "./composer";
@@ -143,7 +145,7 @@ function AccountInbox({ plugin, api, session, status: first, account, many }: Pl
   const [focusN, setFocusN] = useState(0);
   const [info, setInfo] = useState(false);
   const [newChat, setNewChat] = useState(false);
-  const [side, setSide] = useState<"" | "status" | "channels">("");
+  const [side, setSide] = useState<"" | "status" | "channels" | "contacts">("");
   const [connect, setConnect] = useState(false);
   const [label, setLabel] = useState("");
   const [now, setNow] = useState(() => new Date());
@@ -387,8 +389,8 @@ function AccountInbox({ plugin, api, session, status: first, account, many }: Pl
             rowExtra={(c) => <LabelChips ids={c.labels} max={1} />}
             filterExtra={features.labels ? <LabelFilter value={label} onChange={setLabel} /> : null}
             passes={label ? (c) => (c.labels ?? []).includes(label) : undefined}
-            banner={<SessionBanner onOpenConnect={() => setConnect(true)} />}
-            overlay={side === "status" ? <StatusView onClose={() => setSide("")} /> : side === "channels" ? <ChannelsView onClose={() => setSide("")} /> : null}
+            banner={<><SessionBanner onOpenConnect={() => setConnect(true)} /><HistoryBar /></>}
+            overlay={side === "status" ? <StatusView onClose={() => setSide("")} /> : side === "channels" ? <ChannelsView onClose={() => setSide("")} /> : side === "contacts" ? <ContactsView onClose={() => setSide("")} onOpen={(c, info) => { setSide(""); openChat(c.chatId, { kind: "user", name: c.name || c.pushName || c.businessName, phone: c.phone }); if (info) setInfo(true); }} /> : null}
             actions={(<>
               {features.status && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="wa-iconbtn" aria-label="Status" onClick={() => setSide("status")}><IconStatus /></Button></TooltipTrigger><TooltipContent>Status</TooltipContent></Tooltip>}
               {features.channels && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="wa-iconbtn" aria-label="Channels" onClick={() => setSide("channels")}><IconMegaphone /></Button></TooltipTrigger><TooltipContent>Channels</TooltipContent></Tooltip>}
@@ -396,7 +398,7 @@ function AccountInbox({ plugin, api, session, status: first, account, many }: Pl
                 <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className="wa-iconbtn" aria-label="New chat" onClick={() => setNewChat(true)}><IconNewChat /></Button></TooltipTrigger>
                 <TooltipContent>New chat</TooltipContent>
               </Tooltip>
-              <AccountMenu />
+              <AccountMenu onContacts={() => setSide("contacts")} />
             </>)} />
           {chat ? (
             <Conversation chat={chat} messages={shown} hasMore={hasMore} error={messagesError} now={now} draft={drafts[selected] ?? ""} sending={sendingId === selected} focusToken={`${selected}:${focusN}`}

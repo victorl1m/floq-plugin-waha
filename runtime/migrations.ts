@@ -151,4 +151,21 @@ export const migrations: PluginMigration[] = [
       CREATE INDEX {{p}}messages_session_stanza_idx ON {{p}}messages (user_id, session, stanza);
     `,
   },
+  {
+    // 3.2.0: the history import (one row per chat WAHA listed: where its paging stands, so a restart resumes) and the contacts sync
+    // (address-book flag, business name, when WAHA last listed the contact).
+    id: "007_history_contacts",
+    sql: `
+      CREATE TABLE {{p}}history_chats (
+        user_id TEXT NOT NULL, session TEXT NOT NULL, chat_id TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL DEFAULT 'pending', next_offset INTEGER NOT NULL DEFAULT 0, seen INTEGER NOT NULL DEFAULT 0, imported INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, session, chat_id)
+      );
+      CREATE INDEX {{p}}history_chats_todo_idx ON {{p}}history_chats (user_id, session, state, position);
+      ALTER TABLE {{p}}contacts ADD COLUMN saved BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE {{p}}contacts ADD COLUMN business_name TEXT NOT NULL DEFAULT '';
+      ALTER TABLE {{p}}contacts ADD COLUMN synced_at TIMESTAMPTZ;
+    `,
+  },
 ];

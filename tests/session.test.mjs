@@ -88,11 +88,13 @@ test("GET /session: WORKING, engine, account, webhook events that are missing", 
 test("GET /session: '*' covers every event; no webhook entry gives null (env webhooks are invisible)", async () => {
   const h = await harness(async () => ok(FULL(["*"])));
   assert.deepEqual((await h.call("GET /session")).webhook.missingEvents, []);
-  const s = { name: "default", status: "SCAN_QR_CODE", engine: { engine: "NOWEB" }, config: { webhooks: [] } };
+  const s = { name: "default", status: "SCAN_QR_CODE", engine: { engine: "NOWEB" }, config: { webhooks: [], noweb: { store: { enabled: true, fullSync: true } } } };
   const h2 = await harness(async () => ok(s));
   const r = await h2.call("GET /session");
   assert.equal(r.webhook, null); assert.equal(r.status, "SCAN_QR_CODE"); assert.equal(r.engine, "NOWEB"); assert.equal(r.me, null);
   assert.deepEqual(r.wantedEvents, session.WANTED_EVENTS);
+  assert.deepEqual(r.history, { willImport: true, error: null });
+  assert.equal(find(h2, "PUT", "/api/sessions/default").length, 0, "the store is on already: nothing to change");
 });
 
 test("GET /session: 404 MISSING, 401 UNAUTHORIZED, network error and 500 UNREACHABLE, unknown status STOPPED", async () => {
@@ -111,7 +113,7 @@ test("POST /session/start: creates a missing session, starts an existing one", a
   const h = await harness(async (r) => (r.method === "GET" ? (exists ? ok({ status: "STOPPED" }) : { status: 404, json: {} }) : ok({})));
   assert.deepEqual(await h.call("POST /session/start"), { ok: true });
   const created = find(h, "POST", "/api/sessions");
-  assert.equal(created.length, 1); assert.deepEqual(created[0].body, { name: "default", start: true });
+  assert.equal(created.length, 1); assert.deepEqual(created[0].body, { name: "default", start: true, config: { noweb: { store: { enabled: true, fullSync: true } } } });
   assert.equal(created[0].headers["X-Api-Key"], "key");
   exists = true; h.calls.length = 0;
   await h.call("POST /session/start");
@@ -169,10 +171,11 @@ test("GET /session/qr: raw value; 422 is 409 not_scanning; image fallback when r
     return r.query.format === "raw" ? { status: 400, json: {} } : ok({ mimetype: "image/png", data: "iVBORw0KGgo=" });
   });
   assert.deepEqual(await h.call("GET /session/qr"), { value: "2@abc,def,ghi" });
-  assert.deepEqual(h.calls[0].query, { format: "raw" }); assert.equal(h.calls[0].path, "/api/default/auth/qr");
+  assert.deepEqual(find(h, "GET", "/api/default/auth/qr")[0].query, { format: "raw" });
   mode = "image"; h.calls.length = 0;
   assert.deepEqual(await h.call("GET /session/qr"), { image: "data:image/png;base64,iVBORw0KGgo=" });
-  assert.equal(h.calls.length, 2); assert.equal(h.calls[1].headers.Accept, "application/json"); assert.equal(h.calls[1].query.format, undefined);
+  const qr = find(h, "GET", "/api/default/auth/qr");
+  assert.equal(qr.length, 2); assert.equal(qr[1].headers.Accept, "application/json"); assert.equal(qr[1].query.format, undefined);
   mode = "idle";
   const e = await fail(h.call("GET /session/qr"));
   assert.equal(e.status, 409); assert.equal(e.code, "not_scanning");
@@ -184,7 +187,7 @@ test("POST /session/pair-code: digits go to WAHA, the code comes back as ABCD-AB
   const c = find(h, "POST", "/api/default/auth/request-code");
   assert.equal(c.length, 1); assert.deepEqual(c[0].body, { phoneNumber: "5511987654321" });
   for (const phone of ["", "abc", "123", undefined, 5]) assert.equal((await fail(h.call("POST /session/pair-code", { body: { phone } }))).status, 400, String(phone));
-  assert.equal(h.calls.length, 1);
+  assert.equal(find(h, "POST", "/api/default/auth/request-code").length, 1);
   const bad = await harness(async () => ok({ code: "x" }));
   assert.equal((await fail(bad.call("POST /session/pair-code", { body: { phone: "+5511987654321" } }))).status, 502);
 });
@@ -238,7 +241,7 @@ test("webhook session.status is pushed to the UI; WORKING refreshes the account 
   await h.hook("session.status", { name: "default", status: "SCAN_QR_CODE" });
   assert.deepEqual(h.events, [{ name: "session", status: "SCAN_QR_CODE", session: "default" }]);
   await h.hook("session.status", { name: "default", status: "WORKING" }, { me: ME });
-  assert.deepEqual(h.events.at(-1), { name: "session", status: "WORKING", session: "default" });
+  assert.deepEqual(h.events.filter((e) => e.name === "session").at(-1), { name: "session", status: "WORKING", session: "default" });
   await plugin.stop();
   assert.ok(find(h, "GET", "/api/sessions/default").length >= 1, "identity.ensure asked WAHA about the account");
   await h.hook("session.status", { name: "default" });

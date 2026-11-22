@@ -11,6 +11,7 @@ import { parseEnvelope } from "./parse.js";
 import { displayDigits } from "./ids.js";
 import { featuresOf } from "../shared/features.js";
 import { registerExtras } from "./extras.js";
+import { createHistory, type History } from "./history.js";
 
 /** Below the agent CLI's ~300 s request timeout. */
 export const SEND_APPROVAL_WAIT_MS = 280_000;
@@ -25,12 +26,13 @@ export const ME_SEND_PER_MIN = 30;
  * anything an agent sends to other people only happens after the user approves it in Floq.
  */
 let running: ReturnType<typeof createCore> | null = null;
+let importing: History | null = null;
 
 export default definePlugin({
   manifest,
   migrations,
-  /** Waits for background work (history sync, media downloads) to finish. */
-  async stop() { await running?.idle(); },
+  /** Waits for background work (media downloads, a page of the history import) to finish. A running import stops at its next page and resumes on the next start. */
+  async stop() { importing?.pause(); await running?.idle(); },
   start(host: PluginContext) {
     const core = createCore(host);
     // Scoped: a "user id" in here is an account's scope (owner + session), which the routes below get from the `session` they were called with.
@@ -44,7 +46,9 @@ export default definePlugin({
     const identity = createIdentity(core, savedPhone);
     const store = createStore(core, identity);
     const inbox = createInbox(core, identity, store);
-    registerExtras({ core, identity, store, inbox });
+    const history = createHistory(core, identity, store);
+    importing = history;
+    registerExtras({ core, identity, store, inbox, history });
     const { owner } = core;
     const asObject = core.obj;
 
@@ -220,6 +224,12 @@ export default definePlugin({
       const exists = working && own ? await probe("/api/contacts/check-exists", { phone: own.split("@")[0] }) : null;
       const lidOfOwn = working && own ? await probe("/api/{session}/lids/pn/" + encodeURIComponent(own), {}) : null;
       const overview = working ? await probe("/api/{session}/chats/overview", { limit: "1" }) : null;
+      const storeView = one.status === 200 ? await history.view(userId, s) : null;
+      const owner_ = core.split(userId).owner;
+      const imports = await Promise.all((await core.accounts(owner_)).map(async (a) => {
+        const h = await history.status(await core.scope(owner_, a.session));
+        return { session: a.session, state: h.state, phase: h.phase, chatsDone: h.chatsDone, chatsTotal: h.chatsTotal, messages: h.messages, contacts: h.contacts, startedAt: h.startedAt, finishedAt: h.finishedAt, error: h.error, contactsSyncedAt: h.contactsSyncedAt };
+      }));
       return {
         configured: true, session: c.session, accounts: await accountList(userId), basePathPrefix: new URL(c.base).pathname.replace(/\/+$/, "") !== "",
         version: { status: version.status, detail: (version as { detail?: string }).detail, version: o(version.data).version ?? null, engine: o(version.data).engine ?? null, tier: o(version.data).tier ?? null },
@@ -231,6 +241,9 @@ export default definePlugin({
         chatsOverview: overview && { status: overview.status, detail: (overview as { detail?: string }).detail, shape: keys(overview.data), firstKeys: Array.isArray(overview.data) ? keys(overview.data[0]) : [] },
         account: me ? { hasId: !!me.id, hasLid: !!me.lid, sameAsSavedNumber: own ? (await identity.canonical(userId, me.id)) === (await identity.canonical(userId, own)) : null } : null,
         savedNumber: !!own,
+        // Will WAHA have past chats for this session (NOWEB: only with its store on before the phone was linked), and where each account's import stands.
+        historyStore: storeView && { engine: storeView.engine || null, enabled: storeView.willImport, fullSync: storeView.fullSync, error: storeView.error },
+        history: imports, historyLimits: (await history.status(userId)).limits,
       };
     });
     A.call("/me", async ({ userId }) => {

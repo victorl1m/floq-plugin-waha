@@ -18,3 +18,4 @@ export const IconCamera = (p: P) => <Svg {...p}><path d="M4.500 8h3l1.500-2.500h
 export const IconCheckCircle = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="m8 12.500 3 3 5-6" /></Svg>;
 export const IconQr = (p: P) => <Svg {...p}><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2.500v2.500H14zM19 14v.1M14 19.500v.1M17 19.500h3M19 17v.1" /></Svg>;
 export const IconAlertCircle = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7.500v5.500M12 16.300v.1" /></Svg>;
+export const IconDownload = (p: P) => <Svg {...p}><path d="M12 4v11M7.500 10.500 12 15l4.500-4.500M5 19.500h14" /></Svg>;

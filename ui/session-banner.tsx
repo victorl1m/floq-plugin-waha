@@ -7,9 +7,11 @@ import {
 } from "@/plugins/kit";
 import { accountName, errorCode, errorText, useWa, type Account } from "./context";
 import { AccountAvatar, RemoveAccountDialog, RenameAccountDialog, phoneLine, statusText, useAccounts } from "./accounts";
-import { IconCheck, IconRefresh, Spinner } from "./icons";
+import { IconCheck, IconRefresh, IconX, Spinner } from "./icons";
+import { IconContact } from "./icons-composer";
+import { progressText, useHistory } from "./history";
 import { IconBin, IconEdit, IconShield, IconUserPlus } from "./icons-people";
-import { IconAlertCircle, IconCamera, IconLogout, IconPlugOff, IconServerOff, IconSliders, IconStop } from "./icons-session";
+import { IconAlertCircle, IconCamera, IconDownload, IconLogout, IconPlugOff, IconServerOff, IconSliders, IconStop } from "./icons-session";
 import { useSessionInfo, type SessionStatus } from "./session-screen";
 import { SESSION_CSS } from "./styles-session";
 
@@ -26,8 +28,10 @@ const mono = { fontFamily: "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
  * Avatar button with the connection dot and the account menu: every attached account (click to switch), "Add account", and the actions of the
  * account on screen (restart, stop, webhook events, screenshot, rename, default for the AI, remove from Floq, log out).
  */
-export function AccountMenu() {
+export function AccountMenu({ onContacts }: { onContacts?: () => void } = {}) {
   const { api, features, session } = useWa();
+  const history = useHistory();
+  const hist = history.status;
   const { info, refresh: refreshInfo } = useSessionInfo();
   const accounts = useAccounts();
   const [removing, setRemoving] = useState<Account | null>(null);
@@ -91,11 +95,12 @@ export function AccountMenu() {
               <DropdownMenuLabel className="wa-amenu-h"><span>Accounts</span></DropdownMenuLabel>
               {list.map((a) => {
                 const on = a.session === session, live = on ? { ...a, status, name: me?.name || a.name, phone: me?.phone ?? a.phone } : a;
-                const sub = [phoneLine(live), statusText(live.status)].filter(Boolean).join(" · ");
+                const h = on ? hist : a.history, importing = h?.state === "running";
+                const sub = importing ? `Importing ${h!.chatsDone} of ${h!.chatsTotal} chats` : [phoneLine(live), statusText(live.status)].filter(Boolean).join(" · ");
                 return (
                   <DropdownMenuItem key={a.session} role="menuitemradio" aria-checked={on} className="wa-arow" aria-label={`${accountName(live)}, ${sub}${a.unread && !on ? `, ${a.unread} unread` : ""}${a.primary && list.length > 1 ? ", default" : ""}`} onSelect={() => { if (!on) accounts.switchTo(a.session); }}>
                     <AccountAvatar account={live} dot />
-                    <span className="wa-arow-main"><b>{accountName(live)}</b><span>{sub}</span></span>
+                    <span className="wa-arow-main"><b>{accountName(live)}</b><span className={importing ? "wa-arow-prog" : undefined}>{sub}</span></span>
                     {!on && a.unread > 0 && <span className="wa-arow-n">{a.unread > 99 ? "99+" : a.unread}</span>}
                     {on && <IconCheck className="wa-arow-check" />}
                   </DropdownMenuItem>
@@ -115,6 +120,13 @@ export function AccountMenu() {
               <DropdownMenuSeparator />
             </>
           )}
+          {onContacts && <DropdownMenuItem onSelect={onContacts}><IconContact />Contacts</DropdownMenuItem>}
+          {hist?.state === "running" ? (
+            <>
+              <DropdownMenuLabel className="wa-amenu-prog" role="status"><Spinner /><span>{progressText(hist)}</span></DropdownMenuLabel>
+              <DropdownMenuItem disabled={history.busy} onSelect={() => void history.cancel()}><IconX />Cancel import</DropdownMenuItem>
+            </>
+          ) : status === "WORKING" && <DropdownMenuItem disabled={history.busy} onSelect={() => void history.start()}><IconDownload />{hist?.everRan ? "Import history again" : "Import history"}</DropdownMenuItem>}
           <DropdownMenuItem disabled={busy} onSelect={() => void act("/session/restart", "Could not restart", "Restarting WhatsApp")}><IconRefresh />Restart</DropdownMenuItem>
           {status !== "STOPPED" && status !== "MISSING" && <DropdownMenuItem disabled={busy} onSelect={() => void act("/session/stop", "Could not stop")}><IconStop />Stop</DropdownMenuItem>}
           {features.screenshot && status === "WORKING" && <DropdownMenuItem onSelect={() => void screenshot()}><IconCamera />Screenshot</DropdownMenuItem>}

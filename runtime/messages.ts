@@ -14,8 +14,11 @@ export const MEDIA_MAX_BYTES = 16 * 1024 * 1024;
 export const MEDIA_TOTAL_BYTES = 400 * 1024 * 1024;
 
 export interface Store {
-  /** Inserts or refreshes a message. Returns "new" for a row that was not there. Learns id links and contact names on the way. */
-  save(userId: string, m: Parsed, opts?: { real?: boolean }): Promise<"new" | "known" | "skipped">;
+  /**
+   * Inserts or refreshes a message. Returns "new" for a row that was not there. Learns id links and contact names on the way.
+   * `history`: the row comes from WAHA's stored history (the import), so it counts as received when it was sent and old messages are not unread.
+   */
+  save(userId: string, m: Parsed, opts?: { real?: boolean; history?: boolean }): Promise<"new" | "known" | "skipped">;
   listChats(userId: string, opts?: { archived?: boolean }): Promise<{ chats: Record<string, unknown>[]; archivedCount: number }>;
   listMessages(userId: string, chatId: string, opts?: { limit?: unknown; before?: unknown; q?: unknown; sync?: boolean }): Promise<{ messages: Record<string, unknown>[]; more: boolean }>;
   markRead(userId: string, chatId: string): Promise<void>;
@@ -87,6 +90,11 @@ export function createStore(core: Core, identity: Identity): Store {
           m = { ...m, msgId: String(twin.msg_id), chatId: a };
         }
       }
+      // A group message is one row whatever address its id spells the sender with (lid on the webhook, phone id in the history, or none).
+      if (m.stanza && isGroup(m.chatId)) {
+        const twin = (await q(`SELECT msg_id FROM {{p}}messages WHERE user_id = $1 AND session = $S AND chat_id = $2 AND stanza = $3 AND msg_id <> $4 AND from_me = $5 LIMIT 1`, [userId, m.chatId, m.stanza, m.msgId, m.fromMe])).rows[0];
+        if (twin) m = { ...m, msgId: String(twin.msg_id) };
+      }
       // A message we sent through the API and recorded without an id comes back on the webhook with its real id: adopt it instead of showing it twice.
       if (m.fromMe) {
         const ids = await identity.aliases(userId, m.chatId);
@@ -99,11 +107,11 @@ export function createStore(core: Core, identity: Identity): Store {
       }
       const r = m.reply;
       const ins = await q(
-        `INSERT INTO {{p}}messages (user_id, session, chat_id, msg_id, stanza, from_me, sender, sender_name, body, has_media, sent_at, reply_to, reply_body, reply_sender, reply_media, type, media, extra, ack)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19)
+        `INSERT INTO {{p}}messages (user_id, session, chat_id, msg_id, stanza, from_me, sender, sender_name, body, has_media, sent_at, reply_to, reply_body, reply_sender, reply_media, type, media, extra, ack, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19, CASE WHEN $20::boolean THEN $11::timestamptz ELSE now() END)
          ON CONFLICT (session, msg_id) DO NOTHING RETURNING id`,
         [userId, m.session, m.chatId, m.msgId, m.stanza, m.fromMe, m.sender, m.senderName, m.body, m.hasMedia, m.sentAt.toISOString(), r?.id ?? "", r?.body ?? "", r?.sender ?? "", r?.hasMedia ?? false,
-          m.type, m.media ? JSON.stringify(m.media) : null, Object.keys(m.extra).length ? JSON.stringify(m.extra) : null, m.ack]);
+          m.type, m.media ? JSON.stringify(m.media) : null, Object.keys(m.extra).length ? JSON.stringify(m.extra) : null, m.ack, opts.history === true]);
       const fresh = ins.rows.length > 0;
       if (!fresh) {
         // Seen before (history sync, or an event repeated): acks only go up, details fill in.
@@ -127,20 +135,24 @@ export function createStore(core: Core, identity: Identity): Store {
       const r = await q(
         `WITH msgs AS (${MSGS}),
          vis AS (SELECT u.* FROM msgs u LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.session = $S AND st.chat_id = u.cid WHERE st.cleared_at IS NULL OR u.sent_at > st.cleared_at),
-         agg AS (SELECT cid, MAX(sent_at) AS last_at, COUNT(*)::int AS total FROM vis GROUP BY cid)
+         agg AS (SELECT cid, MAX(sent_at) AS last_at, COUNT(*)::int AS total FROM vis GROUP BY cid),
+         -- One pass each instead of a scan per chat: an imported history has thousands of chats.
+         lst AS (SELECT DISTINCT ON (cid) cid, body, from_me, has_media, type, ack, deleted_at, sender_name, sender FROM vis ORDER BY cid, sent_at DESC, id DESC),
+         unr AS (SELECT u.cid, COUNT(*)::int AS n FROM vis u LEFT JOIN {{p}}chat_reads r ON r.user_id = $1 AND r.session = $S AND r.chat_id = u.chat_id
+                  WHERE u.from_me = FALSE AND (r.read_at IS NULL OR u.created_at > r.read_at) GROUP BY u.cid)
          SELECT a.cid AS chat_id, a.last_at, a.total, l.body AS last_body, l.from_me AS last_from_me, l.has_media AS last_has_media, l.type AS last_type, l.ack AS last_ack, l.deleted_at AS last_deleted,
                 COALESCE(NULLIF(l.sender_name, ''), (SELECT COALESCE(NULLIF(k2.name, ''), k2.push_name) FROM {{p}}contacts k2 WHERE k2.user_id = $1 AND k2.session = $S AND k2.chat_id = l.sender LIMIT 1), '') AS last_sender_name, c.name AS name, c.push_name AS push_name, c.phone AS phone, c.has_picture AS has_picture, c.picture_at AS picture_at, c.blocked AS blocked,
                 COALESCE(st.archived, FALSE) AS archived, COALESCE(st.pinned, FALSE) AS pinned, st.muted_until AS muted_until, COALESCE(st.marked_unread, FALSE) AS marked_unread, COALESCE(st.labels, '[]'::jsonb) AS labels,
-                (SELECT COUNT(*)::int FROM vis u LEFT JOIN {{p}}chat_reads r ON r.user_id = $1 AND r.session = $S AND r.chat_id = u.chat_id
-                  WHERE u.cid = a.cid AND u.from_me = FALSE AND (r.read_at IS NULL OR u.created_at > r.read_at)) AS unread
+                COALESCE(unr.n, 0) AS unread
            FROM agg a
            LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.session = $S AND st.chat_id = a.cid
-           LEFT JOIN LATERAL (SELECT body, from_me, has_media, type, ack, deleted_at, sender_name, sender FROM vis WHERE cid = a.cid ORDER BY sent_at DESC, id DESC LIMIT 1) l ON TRUE
+           LEFT JOIN lst l ON l.cid = a.cid
+           LEFT JOIN unr ON unr.cid = a.cid
            LEFT JOIN LATERAL (
              SELECT MAX(NULLIF(k.name, '')) AS name, MAX(NULLIF(k.push_name, '')) AS push_name, MAX(NULLIF(k.phone, '')) AS phone, BOOL_OR(k.has_picture) AS has_picture, MAX(k.picture_at) AS picture_at, BOOL_OR(k.blocked) AS blocked
                FROM {{p}}contacts k WHERE k.user_id = $1 AND k.session = $S AND (k.chat_id = a.cid OR k.chat_id IN (SELECT lid FROM {{p}}lid_map WHERE user_id = $1 AND session = $S AND pn = a.cid))) c ON TRUE
           WHERE (COALESCE(st.hidden, FALSE) = FALSE OR st.cleared_at IS NOT NULL) -- people-wiring: a message newer than cleared_at (only those are in agg) brings a deleted chat back
-          ORDER BY COALESCE(st.pinned, FALSE) DESC, a.last_at DESC LIMIT 300`, [userId]);
+          ORDER BY COALESCE(st.pinned, FALSE) DESC, a.last_at DESC LIMIT 1000`, [userId]);
       const all = r.rows.map((x) => {
         const chatId = String(x.chat_id), kind = kindOf(chatId);
         const digits = digitsOf(chatId) ?? (x.phone ? String(x.phone) : null);
@@ -156,7 +168,7 @@ export function createStore(core: Core, identity: Identity): Store {
         };
       });
       const archived = all.filter((c) => c.archived);
-      return { chats: (opts.archived ? archived : all.filter((c) => !c.archived)).slice(0, 200), archivedCount: archived.length };
+      return { chats: (opts.archived ? archived : all.filter((c) => !c.archived)).slice(0, 500), archivedCount: archived.length };
     },
 
     async listMessages(userId, chatId, opts = {}) {

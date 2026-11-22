@@ -5,6 +5,7 @@ import { Button, toast } from "@/plugins/kit";
 import { errorCode, errorText, useWa, useWaEvent, type Api } from "./context";
 import { IconLock, IconRefresh, Spinner } from "./icons";
 import { IconAlertCircle, IconCheckCircle, IconKey, IconQr, IconServerOff, IconSmartphone } from "./icons-session";
+import { HistoryNote, type SessionHistory } from "./history";
 import { qrMatrix, qrPath } from "./qr";
 import { SESSION_CSS } from "./styles-session";
 
@@ -15,6 +16,8 @@ export interface SessionInfo {
   me: { name: string; phone: string | null } | null;
   webhook: { configured: boolean; events: string[]; missingEvents: string[] } | null;
   wantedEvents?: string[];
+  /** Whether Floq imports the chats once the phone is linked (or why WAHA could not turn history on). */
+  history?: SessionHistory | null;
 }
 
 const visible = () => typeof document === "undefined" || document.visibilityState === "visible";
@@ -112,6 +115,7 @@ export function QrPanel() {
 
 export function PairForm({ onBack }: { onBack: () => void }) {
   const { api } = useWa();
+  const { info } = useSessionInfo();
   const [phone, setPhone] = useState("");
   const touched = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -134,6 +138,7 @@ export function PairForm({ onBack }: { onBack: () => void }) {
     <div className="wa-pair">
       <h2 className="wa-sess-h">Link with phone number</h2>
       <p className="wa-sess-sub">Enter the number of the WhatsApp account you want to link, with the country code.</p>
+      <HistoryNote history={info?.history} />
       <label htmlFor="wa-pair-phone">Phone number</label>
       <form className="wa-pair-row" onSubmit={(e) => { e.preventDefault(); if (phone.trim() && !busy) void request(); }}>
         <input id="wa-pair-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+55 11 99999-9999" value={phone} onFocus={() => { touched.current = true; }} onChange={(e) => { touched.current = true; setPhone(e.target.value); }} aria-invalid={error ? true : undefined} />
@@ -294,6 +299,7 @@ export function SessionScreen({ onConnected }: { onConnected: () => void }) {
           <button type="button" className="wa-slink" onClick={() => setPair(true)}><IconSmartphone width={18} height={18} />Link with phone number instead</button>
         </div>
         <div className="wa-sess-qr"><QrPanel /></div>
+        <HistoryNote history={info?.history} />
       </div>
     );
   }

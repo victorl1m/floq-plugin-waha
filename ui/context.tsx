@@ -6,7 +6,7 @@ import type { Features, Engine } from "../shared/features";
 
 export type Api = <T = unknown>(path: string, init?: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown }) => Promise<T>;
 /** One attached WhatsApp account (GET /accounts). `session` is its WAHA session and what every route takes as `session`. */
-export interface Account { session: string; label: string; name: string; phone: string | null; primary: boolean; status: string; engine: string; unread: number }
+export interface Account { session: string; label: string; name: string; phone: string | null; primary: boolean; status: string; engine: string; unread: number; history?: { state: string; chatsDone: number; chatsTotal: number } }
 /** What the account is called in the UI: the label the user gave it, else the WhatsApp name, else the number, else the session. */
 export const accountName = (a: Pick<Account, "session" | "label" | "name" | "phone">) => a.label || a.name || (a.phone ? "+" + a.phone : a.session);
 /** The route caller of one account: every request names its session, so a chat is always read and answered from its own account. */

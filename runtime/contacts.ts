@@ -8,14 +8,14 @@ const enc = encodeURIComponent;
 const LIST_TTL_MS = 5 * 60_000, ABOUT_TTL_MS = 10 * 60_000;
 const WAHA_PAGE = 1000;
 
-interface Entry { chatId: string; name: string | null; phone: string | null; isMyContact: boolean; avatar: number | null }
+interface Entry { chatId: string; name: string | null; pushName: string; businessName: string; phone: string | null; isMyContact: boolean; isBusiness: boolean; avatar: number | null }
 interface Remote { id: string; name: string; push: string; number: string; mine: boolean | undefined }
 
 // WAHA falls back to the number or the id when it has no name: that is not a name.
 const realName = (v: unknown) => { const n = typeof v === "string" ? v.replace(/[\u0000-\u001f]/g, "").trim().slice(0, 120) : ""; return n && !n.includes("@") && !/^[+\d\s()-]+$/.test(n) ? n : ""; };
 const ms = (v: unknown) => (v ? new Date(v as string).getTime() : null);
 
-export function registerContacts({ core, identity, store }: Deps): void {
+export function registerContacts({ core, identity, store, history }: Deps): void {
   const { ctx } = core;
   const R = ctx.routes;
   const q = (sql: string, params: unknown[]) => ctx.db.query(sql, params);
@@ -39,14 +39,16 @@ export function registerContacts({ core, identity, store }: Deps): void {
   }
 
   async function merged(userId: string): Promise<Entry[]> {
-    const [rem, selfIds] = [await remote(userId), await identity.selfIds(userId)];
+    // Once the contacts were synced the stored rows are the list; before that (and when WAHA never answered a sync) its live list fills in.
+    const synced = (await history.contactsState(userId)).syncedAt !== null;
+    const [rem, selfIds] = [synced ? [] : await remote(userId), await identity.selfIds(userId)];
     const canon = new Map((await q(`SELECT lid, pn FROM {{p}}lid_map WHERE user_id = $1 AND session = $S`, [userId])).rows.map((r) => [String(r.lid), String(r.pn)]));
-    const local = (await q(`SELECT chat_id, name, push_name, phone, has_picture, picture_at FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND (chat_id LIKE '%@c.us' OR chat_id LIKE '%@lid')`, [userId])).rows;
+    const local = (await q(`SELECT chat_id, name, push_name, phone, has_picture, picture_at, saved, business_name, is_business FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND (chat_id LIKE '%@c.us' OR chat_id LIKE '%@lid')`, [userId])).rows;
     const out = new Map<string, Entry & { saved: string; push: string }>();
     const slot = (id: string) => {
       const chatId = canon.get(id) ?? id;
       let e = out.get(chatId);
-      if (!e) { e = { chatId, name: null, phone: null, isMyContact: false, avatar: null, saved: "", push: "" }; out.set(chatId, e); }
+      if (!e) { e = { chatId, name: null, pushName: "", businessName: "", phone: null, isMyContact: false, isBusiness: false, avatar: null, saved: "", push: "" }; out.set(chatId, e); }
       return e;
     };
     const phoneOf = (e: Entry, ...more: string[]) => { const d = digitsOf(e.chatId) ?? more.find((m) => /^\d{8,15}$/.test(m)); if (d && !e.phone) e.phone = displayDigits(d); };
@@ -54,19 +56,20 @@ export function registerContacts({ core, identity, store }: Deps): void {
     for (const r of local) {
       const e = slot(String(r.chat_id));
       e.saved ||= realName(r.name); e.push ||= realName(r.push_name); phoneOf(e, String(r.phone ?? ""));
+      e.businessName ||= realName(r.business_name); e.isBusiness ||= r.is_business === true; e.isMyContact ||= r.saved === true;
       if (r.has_picture === true && r.picture_at) e.avatar = Math.max(e.avatar ?? 0, ms(r.picture_at)!);
     }
-    return [...out.values()].filter((e) => !selfIds.has(e.chatId) && (e.saved || e.push || e.phone)).map(({ saved, push, ...e }) => ({ ...e, name: saved || push || null }));
+    return [...out.values()].filter((e) => !selfIds.has(e.chatId) && (e.saved || e.push || e.phone)).map(({ saved, push, ...e }) => ({ ...e, pushName: push, name: saved || push || e.businessName || null }));
   }
 
   R.get("/contacts", async ({ userId, query }) => {
     await core.owner(userId);
     const text = typeof query.q === "string" ? query.q.trim().slice(0, 100) : "";
-    const limit = Math.min(200, Math.max(1, Number.parseInt(String(query.limit ?? "50"), 10) || 50));
+    const limit = Math.min(500, Math.max(1, Number.parseInt(String(query.limit ?? "50"), 10) || 50)), offset = Math.max(0, Number.parseInt(String(query.offset ?? "0"), 10) || 0);
     const rows = (await merged(userId)).filter((e) => matchesQuery({ chatId: e.chatId, kind: chatKind(e.chatId), name: e.name, phone: e.phone ? e.phone : null }, text));
-    // Named people first, alphabetical; people known only by number after them.
+    // Named people first, alphabetical (a saved name is the name when there is one); people known only by number after them.
     rows.sort((a, b) => (a.name && !b.name ? -1 : !a.name && b.name ? 1 : (a.name ?? a.phone ?? "").localeCompare(b.name ?? b.phone ?? "", undefined, { sensitivity: "base" })));
-    return { contacts: rows.slice(0, limit) };
+    return { contacts: rows.slice(offset, offset + limit), total: rows.length, ...(await history.contactsState(userId)) };
   });
 
   // Is this number on WhatsApp? A typed Brazilian number is tried in both spellings (with and without the ninth digit).

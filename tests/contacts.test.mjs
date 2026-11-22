@@ -32,7 +32,7 @@ test("the picker list merges WAHA contacts with the inbox's own, by canonical id
     ["5531955554444@c.us", "Carla", "5531955554444", false],
     ["5521977776666@c.us", null, "5521977776666", false],
   ]);
-  assert.deepEqual(Object.keys(contacts[0]).sort(), ["avatar", "chatId", "isMyContact", "name", "phone"]);
+  assert.deepEqual(Object.keys(contacts[0]).sort(), ["avatar", "businessName", "chatId", "isBusiness", "isMyContact", "name", "phone", "pushName"]);
   assert.deepEqual(ctcs(h).map((c) => [c.query.limit, c.query.session]), [["1000", "default"]]);
 });
 

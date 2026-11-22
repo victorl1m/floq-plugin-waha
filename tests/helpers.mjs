@@ -30,6 +30,7 @@ export async function harness(plugin, migrations, opts = {}) {
   const routes = {}, internal = {}, events = [], toasts = [], requests = [], approvals = [], kv = new Map(Object.entries(opts.kv ?? {}));
   if (opts.phone) kv.set("phone", opts.phone);
   let webhook;
+  const ticks = [];
   const respond = (r) => {
     const status = r?.status ?? (r ? 200 : 404), bytes = r?.bytes ?? Buffer.from(JSON.stringify(r?.json ?? {}));
     return { ok: status >= 200 && status < 300, status, headers: r?.headers ?? { "content-type": r?.bytes ? "application/octet-stream" : "application/json" }, bytes, text: () => Buffer.from(bytes).toString("utf8"), json: () => JSON.parse(Buffer.from(bytes).toString("utf8")) };
@@ -61,7 +62,7 @@ export async function harness(plugin, migrations, opts = {}) {
     routes: { get: (p, h) => (routes["GET " + p] = h), post: (p, h) => (routes["POST " + p] = h), put: (p, h) => (routes["PUT " + p] = h), delete: (p, h) => (routes["DELETE " + p] = h) },
     internalRoutes: { call: (p, h) => (internal[p] = h) },
     webhooks: { on: (_n, h) => { webhook = h; } },
-    schedule: () => () => undefined,
+    schedule: (_ms, fn) => { ticks.push(fn); return () => undefined; },
   };
   plugin.start(ctx);
   let seq = 0;
@@ -77,6 +78,8 @@ export async function harness(plugin, migrations, opts = {}) {
     chats: async () => (await h.get("/chats")).chats,
     messages: async (chatId, query = {}) => (await h.get("/messages", { chatId, ...query })).messages,
     idle: () => plugin.stop?.(),
+    /** Runs what the plugin scheduled (the host calls these on a timer). */
+    tick: async () => { for (const fn of ticks.slice(-1)) await fn(); },
     sql: async (q, params) => (await db.query(q, params)).rows,
   };
   open.push(h);

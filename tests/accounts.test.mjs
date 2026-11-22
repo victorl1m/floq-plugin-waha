@@ -13,13 +13,13 @@ const acct = (session, extra = {}) => ({ session, label: "", name: "", phone: ""
 const HOOK = { url: "https://floq.example.com/v1/plugins/waha/hooks/events/tok123", events: ["message.any", "session.status"], hmac: null, retries: null, customHeaders: null };
 /** A fake WAHA with these sessions: { name: { status, me?, webhooks? } }. Records nothing itself (h.requests has every call). */
 const waha = (sessions) => (method, path, req) => {
-  const info = (name) => ({ name, status: sessions[name].status, engine: { engine: "NOWEB" }, me: sessions[name].me ?? null, config: { webhooks: sessions[name].webhooks ?? [] } });
+  const info = (name) => ({ name, status: sessions[name].status, engine: { engine: "NOWEB" }, me: sessions[name].me ?? null, config: { ...(sessions[name].config ?? {}), webhooks: sessions[name].webhooks ?? [] } });
   if (method === "GET" && path === "/api/sessions") return { json: Object.keys(sessions).map(info) };
   const one = /^\/api\/sessions\/([^/]+)$/.exec(path);
   if (one && method === "GET") return sessions[one[1]] ? { json: info(one[1]) } : { status: 404, json: {} };
-  if (one && method === "PUT") { sessions[one[1]].webhooks = req.body.config.webhooks; return { json: {} }; }
+  if (one && method === "PUT") { sessions[one[1]].webhooks = req.body.config.webhooks; sessions[one[1]].config = req.body.config; return { json: {} }; }
   if (one && method === "DELETE") { delete sessions[one[1]]; return { json: {} }; }
-  if (method === "POST" && path === "/api/sessions") { sessions[req.body.name] = { status: "SCAN_QR_CODE", webhooks: req.body.config?.webhooks ?? [] }; return { json: { name: req.body.name } }; }
+  if (method === "POST" && path === "/api/sessions") { sessions[req.body.name] = { status: "SCAN_QR_CODE", webhooks: req.body.config?.webhooks ?? [], config: req.body.config }; return { json: { name: req.body.name } }; }
   if (method === "POST" && /^\/api\/sessions\/[^/]+\/start$/.test(path)) return { json: {} };
   return undefined;
 };
@@ -183,9 +183,10 @@ test("link a new WhatsApp: creates a WAHA session with Floq's webhook, attaches 
   const base = waha(sessions);
   const h = await harness(plugin, migrations, { waha: (m, p, req) => (p === "/api/floq-2/auth/qr" ? { json: { value: "QR-OF-FLOQ-2" } } : base(m, p, req)) });
   const r = await h.post("/accounts/create", { label: "Support" });
-  assert.deepEqual(r, { ok: true, session: "floq-2", webhook: "added" });
+  assert.deepEqual(r, { ok: true, session: "floq-2", webhook: "added", history: { willImport: true, error: null } });
   const created = h.requests.find((x) => x.method === "POST" && x.path === "/api/sessions").body;
   assert.equal(created.name, "floq-2"); assert.equal(created.start, true); assert.equal(created.config.webhooks[0].url, HOOK.url);
+  assert.deepEqual(created.config.noweb, { store: { enabled: true, fullSync: true } }, "created with the history store on");
   assert.deepEqual((await h.get("/accounts")).accounts.map((a) => [a.session, a.label, a.status]), [["default", "", "WORKING"], ["floq-2", "Support", "SCAN_QR_CODE"]]);
   assert.equal((await h.get("/session", { session: "floq-2" })).status, "SCAN_QR_CODE");
   assert.deepEqual(await h.get("/session/qr", { session: "floq-2" }), { value: "QR-OF-FLOQ-2" });

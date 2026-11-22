@@ -78,7 +78,7 @@ export interface Core {
 const ENGINE_TTL_MS = 5 * 60_000;
 
 /** Tables whose rows belong to one account (messages carry the session since 001). */
-export const SESSION_TABLES = ["contacts", "chat_reads", "lid_map", "reactions", "poll_votes", "media_blobs", "known_ids", "chat_state", "calls", "statuses"];
+export const SESSION_TABLES = ["contacts", "chat_reads", "lid_map", "reactions", "poll_votes", "media_blobs", "known_ids", "chat_state", "calls", "statuses", "history_chats"];
 
 export function createCore(host: PluginContext): Core {
   const listeners = new Map<string, WebhookListener[]>();
