@@ -15,10 +15,12 @@ const IconWhatsApp = resolvePluginIcon("IconBrandWhatsapp");
 export function EmptyConversation({ session }: { session: string }) {
   return (
     <section className="wa-pane wa-chat-pane wa-center wa-empty" aria-label="Conversation">
-      <span className="wa-hero"><IconWhatsApp /></span>
-      <span className="wa-hero-title">WhatsApp in Floq</span>
-      <p>Pick a chat on the left to read it and reply. Replies you send here go out from your own WhatsApp number.</p>
-      <span className="wa-small"><IconLock />{session ? `Connected through your WAHA session “${session}”` : "Connected through your own WAHA instance"}</span>
+      <div className="wa-hello">
+        <span className="wa-hero"><IconWhatsApp /></span>
+        <span className="wa-hero-title">WhatsApp in Floq</span>
+        <p>Pick a chat on the left to read it and reply. Replies you send here go out from your own WhatsApp number.</p>
+        <span className="wa-small"><IconLock />{session ? `Connected through your WAHA session “${session}”` : "Connected through your own WAHA instance"}</span>
+      </div>
     </section>
   );
 }

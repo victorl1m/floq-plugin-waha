@@ -12,6 +12,9 @@ export const INBOX_CSS = `
 .wa-rowwrap{position:relative}
 .wa-rowmenu{position:absolute;right:8px;bottom:8px;display:none}
 .wa-rowwrap:hover .wa-rowmenu,.wa-rowwrap:focus-within .wa-rowmenu,.wa-rowmenu:has([data-state="open"]){display:block}
+/* the menu button takes room from the preview line instead of covering it */
+.wa-rowwrap:is(:hover,:focus-within) .wa-row .wa-line:last-child,.wa-rowwrap:has(.wa-rowmenu [data-state="open"]) .wa-row .wa-line:last-child{padding-right:34px}
+@media (hover:none){.wa-rowwrap .wa-row .wa-line:last-child{padding-right:0!important}}
 .wa-rowmenu .wa-iconbtn{width:28px;height:28px;background:var(--wa-hover)}
 .wa-rowwrap:hover .wa-row .wa-pill,.wa-rowwrap:hover .wa-row .wa-rowico{visibility:hidden}
 @media (hover:none){.wa-rowmenu{display:none!important}}

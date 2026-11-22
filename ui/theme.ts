@@ -21,7 +21,7 @@ const vars = (dark: boolean) => {
     `--wa-shadow:${v("0 1px 1.5px rgb(28 38 54 / .14)", "0 1px 1px rgb(0 0 0 / .45)")}`, "--wa-radius:var(--radius,10px)",
     `--wa-l:${v("42%", "68%")}`, `--wa-avatar-l:${v("86%", "26%")}`, `--wa-avatar-fg:${v("32%", "82%")}`,
     // the agent canvas: .canvas-chrome-light's tokens in light, React Flow's dark defaults in dark
-    `--wa-wall-d:${v("#f4f5f8", "#141414")}`, `--wa-dot-d:${v("#aab2c0", "#777777")}`,
+    `--wa-wall-d:${v("#f4f5f8", "#141414")}`, `--wa-dot-d:${v("#aab2c0", "#777777")}`, `--wa-dot-a:${v("55%", "32%")}`,
   ].join(";");
 };
 
@@ -31,7 +31,7 @@ export const THEME_CSS = `
 .wa-dlg,.wa-portal,.wa-bdlg{--wa-panel:var(--popover,var(--wa-solid));--wa-bar:var(--wa-muted)}
 /* surfaces. Acrylic by default: translucent card over the workspace, like Floq's panes. The chat pane is the agent canvas. */
 .wa-root{--wa-panel:color-mix(in oklab,var(--wa-solid) 76%,transparent);--wa-bar:color-mix(in oklab,var(--wa-muted) 62%,transparent);--wa-pop:color-mix(in oklab,var(--popover,var(--wa-solid)) 78%,transparent);
-  --wa-blur:blur(24px) saturate(1.5);--wa-pop-blur:blur(14px) saturate(1.4);--wa-wall:var(--canvas-bg,var(--wa-wall-d));--wa-wall-dot:var(--canvas-dot,var(--wa-dot-d))}
+  --wa-blur:blur(24px) saturate(1.5);--wa-pop-blur:blur(14px) saturate(1.4);--wa-wall:var(--canvas-bg,var(--wa-wall-d));--wa-wall-dot:color-mix(in oklab,var(--canvas-dot,var(--wa-dot-d)) var(--wa-dot-a),transparent)}
 /* native window material: the OS draws the blur behind the window, so the panes are only a light tint and the chat is the canvas pane */
 :root[data-native-material] .wa-root{--wa-panel:color-mix(in oklab,var(--wa-solid) 40%,transparent);--wa-blur:none;--wa-wall:var(--canvas-bg,var(--native-canvas-pane,var(--wa-wall-d)))}
 :root[data-material="solid"] .wa-root{--wa-panel:var(--wa-solid);--wa-bar:var(--wa-muted);--wa-pop:var(--popover,var(--wa-solid));--wa-blur:none;--wa-pop-blur:none;--wa-wall:var(--wa-wall-d)}

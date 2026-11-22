@@ -76,6 +76,9 @@ export const CSS = THEME_CSS + `
 .wa-quiet{margin:0;padding:32px 20px;text-align:center;color:var(--wa-sub);overflow-wrap:anywhere}
 .wa-spin{display:inline-block;width:22px;height:22px;border-radius:50%;border:2.5px solid color-mix(in srgb,var(--wa-accent) 25%,transparent);border-top-color:var(--wa-accent)}
 .wa-empty{background:radial-gradient(circle at center,var(--wa-wall-dot) .8px,transparent 1.2px) 0 0/22px 22px,var(--wa-wall);gap:0}
+.wa-hello{display:flex;flex-direction:column;align-items:center;max-width:min(520px,calc(100% - 32px));padding:32px 36px;border-radius:calc(var(--radius,10px) + 8px);
+  background:color-mix(in oklab,var(--wa-solid) 88%,transparent);border:1px solid var(--wa-line);box-shadow:0 12px 32px -18px rgb(0 0 0 / .45);-webkit-backdrop-filter:var(--wa-pop-blur);backdrop-filter:var(--wa-pop-blur)}
+.wa-hello p{margin:0;color:var(--wa-sub);line-height:1.5}
 .wa-hero{display:grid;place-items:center;width:96px;height:96px;margin-bottom:26px;border-radius:50%;background:color-mix(in srgb,var(--wa-accent) 14%,transparent);color:var(--wa-accent)}
 .wa-hero svg{width:48px;height:48px;stroke-width:1.4}
 .wa-hero-title{margin-bottom:12px;font-size:28px;font-weight:300;letter-spacing:-.01em;line-height:1.2;color:var(--wa-text)}
