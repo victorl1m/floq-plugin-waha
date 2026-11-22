@@ -110,16 +110,18 @@ export function parseFormat(text: string, opts: FormatOptions = {}): Block[] {
   const ids = new Map<string, string>();
   for (const id of opts.mentions ?? []) { const d = mentionDigits(id); if (d) ids.set(d, id); }
   const src = (text ?? "").replace(/\r\n?/g, "\n");
+  // ```x``` on one line is inline monospace in WhatsApp (mid-sentence), not a block: treat it like `x`. Fences that span lines stay blocks.
+  const flat = src.replace(/```([^`\n]+?)```/g, "`$1`");
   const blocks: Block[] = [];
   // Fenced blocks first; an unclosed fence stays literal text.
   const segments: { code: boolean; v: string }[] = [];
   let at = 0;
-  for (const m of src.matchAll(/```([\s\S]*?)```/g)) {
-    if (m.index! > at) segments.push({ code: false, v: src.slice(at, m.index) });
+  for (const m of flat.matchAll(/```([\s\S]*?)```/g)) {
+    if (m.index! > at) segments.push({ code: false, v: flat.slice(at, m.index) });
     segments.push({ code: true, v: m[1].replace(/^\n/, "").replace(/\n$/, "") });
     at = m.index! + m[0].length;
   }
-  if (at < src.length) segments.push({ code: false, v: src.slice(at) });
+  if (at < flat.length) segments.push({ code: false, v: flat.slice(at) });
   for (const [si, seg] of segments.entries()) {
     if (seg.code) { blocks.push({ t: "pre", v: seg.v }); continue; }
     // The line break that touches a fence belongs to the fence.

@@ -177,3 +177,15 @@ test("callLabel", () => {
   assert.equal(f.callLabel({ video: true, status: "reject" }), "Missed video call");
   assert.equal(f.callLabel({ video: true, status: "" }), "Video call");
 });
+
+test("```x``` inside a line is inline monospace (as WhatsApp shows it), a fence over several lines stays a block", () => {
+  const b = f.parseFormat("passa a apontar para ```artefato.url``` agora");
+  assert.equal(b.length, 1);
+  assert.deepEqual(b[0].c.map((n) => n.t), ["text", "code", "text"]);
+  assert.equal(b[0].c[1].v, "artefato.url");
+  const l = f.parseFormat("1. Chaves no schema ```thais``` (recriadas)\n2. Fim");
+  assert.equal(l.length, 1); assert.equal(l[0].t, "list");
+  assert.ok(l[0].items[0].some((n) => n.t === "code" && n.v === "thais"));
+  const blk = f.parseFormat("antes\n```\nconst a = 1\n```\ndepois");
+  assert.deepEqual(blk.map((x) => x.t), ["p", "pre", "p"]);
+});
