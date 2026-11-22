@@ -27,6 +27,20 @@ export function registerSession(deps: Deps): void {
   const { ctx } = core;
   const R = ctx.routes;
 
+  /** Every session of the WAHA instance, or null when it cannot say. */
+  async function list(userId: string): Promise<Obj[] | null> {
+    const r = await core.tryWaha<unknown>(userId, "GET", "/api/sessions", { query: { all: "true" } });
+    return Array.isArray(r) ? r.filter((x): x is Obj => !!x && typeof x === "object" && typeof (x as Obj).name === "string") : null;
+  }
+  const NAME = /^[A-Za-z0-9._-]{1,64}$/;
+  /** Forgets what was learned about the previous session's account. */
+  async function switched(userId: string, name: string) {
+    await ctx.kv.set(userId, "session", name);
+    await ctx.kv.set(userId, "me", null);
+    core.resetEngine();
+    core.publish(userId, "session", { status: "STARTING" });
+  }
+
   /** The session as WAHA reports it, or the reason it cannot. */
   async function read(userId: string): Promise<{ s: Obj | null; status: string }> {
     try {
@@ -34,7 +48,11 @@ export function registerSession(deps: Deps): void {
       return { s: s && typeof s === "object" ? s : {}, status: String((s as Obj | null)?.status ?? "").toUpperCase() || "STOPPED" };
     } catch (e) {
       if (!(e instanceof WahaError)) throw e;
-      if (e.status === 404) return { s: null, status: "MISSING" };
+      if (e.status === 404) {
+        // Older WAHA has no GET /api/sessions/{name}: the list still knows the session.
+        const want = (await core.config(userId)).session, hit = (await list(userId))?.find((x) => x.name === want);
+        return hit ? { s: hit, status: String(hit.status ?? "").toUpperCase() || "STOPPED" } : { s: null, status: "MISSING" };
+      }
       if (e.status === 401 || e.status === 403) return { s: null, status: "UNAUTHORIZED" };
       return { s: null, status: "UNREACHABLE" };
     }
@@ -79,11 +97,42 @@ export function registerSession(deps: Deps): void {
       const c = await core.ready(userId);
       const { status } = await read(userId);
       if (status === "UNREACHABLE" || status === "UNAUTHORIZED") throw new WahaError(status === "UNAUTHORIZED" ? 401 : 0);
-      if (status === "MISSING") await core.waha(userId, "POST", "/api/sessions", { body: { name: c.session, start: true } });
-      else await core.waha(userId, "POST", "/api/sessions/{session}/start");
+      const post = async (path: string, body?: Obj): Promise<WahaError | null> => {
+        try { await core.waha(userId, "POST", path, body ? { body } : {}); return null; } catch (e) { if (e instanceof WahaError) return e; throw e; }
+      };
+      const legacy = () => post("/api/sessions/start", { name: c.session }); // WAHA before 2024.9: name in the body
+      let err: WahaError | null;
+      if (status === "MISSING") {
+        err = await post("/api/sessions", { name: c.session, start: true });
+        if (err && (err.status === 404 || err.status === 405)) err = (await legacy()) && err;
+        else if (err && (err.status === 409 || err.status === 422 || err.status === 400)) err = (await post("/api/sessions/{session}/start")) && err; // it exists after all
+      } else {
+        err = await post("/api/sessions/{session}/start");
+        if (err && (err.status === 404 || err.status === 405)) err = (await legacy()) && err;
+      }
+      if (err) throw err;
       return { ok: true };
     }, "session start");
   });
+  // The sessions that exist in WAHA, to attach one that is already there instead of creating a new one.
+  R.get("/session/list", async ({ userId }) => {
+    await core.owner(userId);
+    const c = await core.ready(userId), all = await list(userId);
+    return { current: c.session, sessions: (all ?? []).slice(0, 50).map((x) => {
+      const me = x.me && typeof x.me === "object" ? (x.me as Obj) : null, id = me && typeof me.id === "string" ? me.id.split("@")[0].replace(/\D/g, "") : "";
+      return { name: String(x.name).slice(0, 64), status: String(x.status ?? "").toUpperCase() || "STOPPED", account: me ? { name: typeof me.pushName === "string" ? me.pushName.slice(0, 80) : "", phone: id ? displayDigits(id) : null } : null };
+    }).filter((x) => NAME.test(x.name)), known: all !== null };
+  });
+  // Use a session by name: one from the list, or a new name that "Connect" then creates.
+  R.post("/session/use", async ({ userId, body }) => {
+    await core.owner(userId);
+    const name = String(core.obj(body).name ?? "").trim();
+    if (!NAME.test(name)) throw ctx.httpError(400, "invalid_session", "A session name is 1-64 letters, digits, dots, dashes or underscores.");
+    await core.ready(userId);
+    await switched(userId, name);
+    return { ok: true, session: name };
+  });
+
   for (const action of ["stop", "restart"] as const) {
     R.post("/session/" + action, async ({ userId }) => {
       await core.owner(userId);

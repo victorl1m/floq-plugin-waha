@@ -118,6 +118,43 @@ test("POST /session/start: creates a missing session, starts an existing one", a
   assert.equal(find(h, "POST", "/api/sessions/default/start").length, 1); assert.equal(find(h, "POST", "/api/sessions").length, 0);
 });
 
+test("a failed WAHA call names the status and WAHA's own message", async () => {
+  const h = await harness(async (r) => (r.method === "GET" && r.path === "/api/sessions/default" ? ok({ status: "STOPPED" }) : { status: 500, json: { statusCode: 500, message: "Engine http://10.0.0.1:3000/x crashed\n badly" } }));
+  const e = await fail(h.call("POST /session/start"));
+  assert.equal(e.status, 502); assert.equal(e.message, "WAHA answered 500: Engine crashed badly");
+});
+
+test("POST /session/start falls back: old WAHA start by name, and start when create says it exists", async () => {
+  let h = await harness(async (r) => (r.path === "/api/sessions/start" ? ok({}) : { status: 404, json: {} }));
+  assert.deepEqual(await h.call("POST /session/start"), { ok: true });
+  assert.deepEqual(find(h, "POST", "/api/sessions/start")[0].body, { name: "default" });
+  h = await harness(async (r) => (r.method === "GET" ? { status: 404, json: {} } : r.path === "/api/sessions" ? { status: 422, json: { message: "Session 'default' already exists" } } : ok({})));
+  assert.deepEqual(await h.call("POST /session/start"), { ok: true });
+  assert.equal(find(h, "POST", "/api/sessions/default/start").length, 1);
+  h = await harness(async (r) => (r.method === "GET" ? { status: 404, json: {} } : { status: 422, json: { message: "only 'default' session" } }));
+  assert.equal((await fail(h.call("POST /session/start"))).status, 409);
+});
+
+test("session list and use: attach an existing WAHA session by name; it wins over the setting", async () => {
+  const sessions = [{ name: "work", status: "WORKING", me: { id: "5511987654321@c.us", pushName: "Zoe Shop" } }, { name: "old", status: "STOPPED" }, { name: "bad name!", status: "STOPPED" }];
+  const h = await harness(async (r) => (r.path === "/api/sessions" && r.method === "GET" ? ok(sessions) : r.path === "/api/sessions/work" ? ok(sessions[0]) : { status: 404, json: {} }));
+  assert.equal((await h.call("GET /session")).status, "MISSING");
+  const l = await h.call("GET /session/list");
+  assert.equal(l.current, "default"); assert.equal(l.known, true);
+  assert.deepEqual(l.sessions, [{ name: "work", status: "WORKING", account: { name: "Zoe Shop", phone: "5511987654321" } }, { name: "old", status: "STOPPED", account: null }]);
+  assert.equal((await fail(h.call("POST /session/use", { body: { name: "../x" } }))).status, 400);
+  assert.deepEqual(await h.call("POST /session/use", { body: { name: "work" } }), { ok: true, session: "work" });
+  assert.equal((await h.call("GET /session")).status, "WORKING");
+  assert.ok(h.calls.some((c) => c.path === "/api/sessions/work"));
+  // webhooks of the chosen session are accepted, the old name is ignored
+  assert.deepEqual(await h.hook("session.status", { status: "WORKING" }, { session: "default" }), { ok: true, ignored: true });
+});
+
+test("GET /session: a WAHA without GET /api/sessions/{name} is read from the list", async () => {
+  const h = await harness(async (r) => (r.path === "/api/sessions" ? ok([{ name: "default", status: "SCAN_QR_CODE" }]) : { status: 404, json: {} }));
+  assert.equal((await h.call("GET /session")).status, "SCAN_QR_CODE");
+});
+
 test("POST /session/stop, restart, logout hit the right endpoint; stop is announced", async () => {
   const h = await harness(async () => ok({}));
   for (const a of ["stop", "restart", "logout"]) { assert.deepEqual(await h.call("POST /session/" + a), { ok: true }); assert.equal(find(h, "POST", `/api/sessions/default/${a}`).length, 1, a); }

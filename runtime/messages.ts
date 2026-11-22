@@ -122,6 +122,7 @@ export function createStore(core: Core, identity: Identity): Store {
     async listChats(userId, opts = {}) {
       const selfIds = await identity.selfIds(userId);
       const me = await identity.me(userId);
+      const meChat = me?.id ? await identity.canonical(userId, me.id) : "";
       const r = await q(
         `WITH msgs AS (${MSGS}),
          vis AS (SELECT u.* FROM msgs u LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.chat_id = u.cid WHERE st.cleared_at IS NULL OR u.sent_at > st.cleared_at),
@@ -143,7 +144,7 @@ export function createStore(core: Core, identity: Identity): Store {
         const chatId = String(x.chat_id), kind = kindOf(chatId);
         const digits = digitsOf(chatId) ?? (x.phone ? String(x.phone) : null);
         const isSelf = selfIds.has(chatId);
-        const name = (x.name ? String(x.name) : "") || (x.push_name ? String(x.push_name) : "") || (isSelf && me?.name ? me.name : "");
+        const name = (x.name ? String(x.name) : "") || (x.push_name ? String(x.push_name) : "") || (isSelf && me?.name && meChat === chatId ? me.name : "");
         return {
           chatId, kind: kind === "channel" || kind === "status" ? "other" : kind, name: name || null, phone: digits ? displayDigits(digits) : null, isSelf,
           lastBody: x.last_deleted ? "" : String(x.last_body ?? "").slice(0, 200), lastFromMe: x.last_from_me === true, lastHasMedia: x.last_has_media === true, lastType: String(x.last_type ?? "chat"),

@@ -14,6 +14,7 @@ floq plugin call waha chats
 floq plugin call waha messages --json '{"chatId":"5511999999999@c.us","limit":20}'
 floq plugin call waha messages --json '{"chatId":"5511999999999@c.us","search":"invoice"}'
 floq plugin call waha media-info --json '{"messageId":"<id from messages>"}'
+floq plugin call waha diagnostics   # read-only: which WAHA calls answer (status codes, session state, engine); use it when something fails
 ```
 
 One person is one chat, even when WhatsApp addresses them by phone (`...@c.us`), by `...@lid`, or by both spellings of a Brazilian mobile: use the `chatId` that `chats` returns. The chat with `isSelf: true` is the user.

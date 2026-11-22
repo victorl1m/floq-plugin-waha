@@ -1,7 +1,7 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "apiVersion": 1,
   "tier": "core",
   "description": "WhatsApp in Floq on your own WAHA instance: chats, media, voice notes, reactions, groups and login by QR. The AI can read it and message you freely on your own number; messages to other people need your approval.",

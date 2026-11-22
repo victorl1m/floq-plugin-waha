@@ -159,6 +159,66 @@ function PairForm({ onBack }: { onBack: () => void }) {
   );
 }
 
+interface WahaSession { name: string; status: string; account: { name: string; phone: string | null } | null }
+const SESSION_LABEL: Record<string, string> = { WORKING: "Connected", SCAN_QR_CODE: "Waiting for a scan", STARTING: "Starting", STOPPED: "Stopped", FAILED: "Failed" };
+
+/** No session with the configured name: attach one that already exists in WAHA, or create one (then the QR appears). */
+function PickSession({ onDone }: { onDone: () => Promise<void> }) {
+  const { api } = useWa();
+  const [list, setList] = useState<{ current: string; sessions: WahaSession[]; known: boolean } | null>(null);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const touched = useRef(false);
+  useEffect(() => {
+    let live = true;
+    api<{ current: string; sessions: WahaSession[]; known: boolean }>("/session/list")
+      .then((r) => { if (!live) return; setList(r); if (!touched.current) setName(r.current); })
+      .catch((e) => { if (live) { setList({ current: "", sessions: [], known: false }); setError(errorText(e)); } });
+    return () => { live = false; };
+  }, [api]);
+  async function use(n: string, create: boolean) {
+    setBusy(n); setError("");
+    try {
+      await api("/session/use", { method: "POST", body: { name: n } });
+      if (create) await api("/session/start", { method: "POST" });
+      await onDone();
+    } catch (e) { setError(errorText(e)); }
+    finally { setBusy(""); }
+  }
+  const valid = /^[A-Za-z0-9._-]{1,64}$/.test(name.trim());
+  return (
+    <div className="wa-pair wa-spick">
+      <h2 className="wa-sess-h">Connect WhatsApp</h2>
+      {!list ? <div className="wa-spick-busy" role="status"><Spinner /></div> : (
+        <>
+          {list.sessions.length > 0 && (
+            <>
+              <p className="wa-sess-sub">{list.current ? <>WAHA has no session called <b>{list.current}</b>. Use one that is already there:</> : "Use a session that is already in WAHA:"}</p>
+              <ul className="wa-spick-list">
+                {list.sessions.map((s) => (
+                  <li key={s.name}>
+                    <button type="button" className="wa-spick-item" disabled={!!busy} onClick={() => void use(s.name, s.status === "STOPPED" || s.status === "FAILED")}>
+                      <span className="wa-spick-main"><b>{s.name}</b><span>{s.account ? [s.account.name, s.account.phone ? "+" + s.account.phone : ""].filter(Boolean).join(" · ") : "No phone linked yet"}</span></span>
+                      <span className={`wa-spick-st ${s.status === "WORKING" ? "wa-ok" : ""}`}>{busy === s.name ? <Spinner /> : SESSION_LABEL[s.status] ?? s.status}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <label htmlFor="wa-spick-name">{list.sessions.length ? "Or create a new session and scan the QR code" : "Session name: Floq creates it in WAHA, then you scan the QR code"}</label>
+          <form className="wa-pair-row" onSubmit={(e) => { e.preventDefault(); if (valid && !busy) void use(name.trim(), true); }}>
+            <input id="wa-spick-name" type="text" autoComplete="off" spellCheck={false} placeholder="default" value={name} onChange={(e) => { touched.current = true; setName(e.target.value); }} aria-invalid={name && !valid ? true : undefined} />
+            <Button type="submit" variant="ghost" className="wa-pbtn" disabled={!!busy || !valid}>{busy && busy === name.trim() && <Spinner />}Create and connect</Button>
+          </form>
+          {error && <p className="wa-pair-err" role="alert">{error}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function State({ icon, tone, title, children, actions }: { icon: React.ReactNode; tone?: "ok" | "warn"; title: string; children?: React.ReactNode; actions?: React.ReactNode }) {
   return (
     <div className="wa-sess-state" role="status">
@@ -202,8 +262,10 @@ export function SessionScreen({ onConnected }: { onConnected: () => void }) {
     body = <State icon={<IconServerOff />} tone="warn" title="Cannot reach WAHA" actions={<Button type="button" variant="ghost" className="wa-obtn" onClick={() => void reload()}><IconRefresh width={16} height={16} />Try again</Button>}>Check that your WAHA instance is running and that the address in the plugin Settings is right.</State>;
   } else if (status === "UNAUTHORIZED") {
     body = <State icon={<IconKey />} tone="warn" title="WAHA refused the API key" actions={<Button type="button" variant="ghost" className="wa-obtn" onClick={() => void reload()}><IconRefresh width={16} height={16} />Check again</Button>}>Update the WAHA_API_KEY secret in the plugin Settings so it matches your WAHA instance.</State>;
-  } else if (status === "MISSING" || status === "STOPPED") {
-    body = <State icon={<IconSmartphone />} title="Connect WhatsApp" actions={primary("Connect WhatsApp", () => void post("/session/start", "Could not connect"))}>{status === "MISSING" ? "Link your WhatsApp account to read and send messages here. Floq creates the WAHA session for you." : "WhatsApp is stopped. Connect to start receiving messages again."}</State>;
+  } else if (status === "MISSING") {
+    body = <PickSession onDone={reload} />;
+  } else if (status === "STOPPED") {
+    body = <State icon={<IconSmartphone />} title="Connect WhatsApp" actions={primary("Connect WhatsApp", () => void post("/session/start", "Could not connect"))}>WhatsApp is stopped. Connect to start receiving messages again.</State>;
   } else if (status === "STARTING") {
     body = <State icon={<Spinner />} title="Starting WhatsApp">This takes a few seconds. The QR code appears here when it is ready.</State>;
   } else if (status === "FAILED") {

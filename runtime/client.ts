@@ -11,12 +11,22 @@ export function phoneToChatId(raw: unknown): string | null {
 
 export const TEXT_MAX = 4096;
 
-/** Errors name the HTTP status only: never URLs, the API key or the upstream body. */
+/** Errors name the HTTP status and, when WAHA gave one, its own short error message (control characters and URLs removed): never the API key or the rest of the body. */
 export class WahaError extends Error {
-  constructor(readonly status: number) { super(`WAHA request failed (HTTP ${status})`); this.name = "WahaError"; }
+  constructor(readonly status: number, readonly detail = "") { super(`WAHA request failed (HTTP ${status})`); this.name = "WahaError"; }
 }
 
 /** `https://host[:port][/prefix]` without a trailing slash; http is allowed because the instance is self-hosted. Null otherwise. */
+/** WAHA's own error text from a failed response ({message}, {error}, {exception:{message}}), cleaned and cut to one short line. */
+export function wahaDetail(res: { json(): unknown; text?(): string }): string {
+  let v: unknown;
+  try { v = res.json(); } catch { v = null; }
+  const o = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  const ex = o.exception && typeof o.exception === "object" ? (o.exception as Record<string, unknown>).message : undefined;
+  const pick = [o.message, ex, o.error].map((m) => (Array.isArray(m) ? m.filter((x) => typeof x === "string").join("; ") : m)).find((m) => typeof m === "string" && m.trim());
+  return typeof pick === "string" ? pick.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim().slice(0, 160) : "";
+}
+
 export function normalizeBase(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   try {

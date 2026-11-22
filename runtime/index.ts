@@ -2,7 +2,7 @@ import { definePlugin, type PluginContext } from "../shared/sdk";
 import manifest from "../plugin.json" with { type: "json" };
 import { migrations } from "./migrations.js";
 import { formatPhone, phoneDigits } from "../shared/phone.js";
-import { phoneToChatId, sessionName, verifyHmac } from "./client.js";
+import { WahaError, phoneToChatId, verifyHmac } from "./client.js";
 import { createCore } from "./core.js";
 import { createIdentity } from "./identity.js";
 import { createStore } from "./messages.js";
@@ -189,6 +189,38 @@ export default definePlugin({
       return { id: x.msg_id, type: x.type, caption: x.body, mime: m.mime ?? null, filename: m.filename ?? null, size: m.size ?? null, duration: m.duration ?? null, width: m.width ?? null, height: m.height ?? null,
         location: e.location ?? null, contacts: e.vcards ?? null, poll: e.poll ?? null };
     });
+    // Read-only health check of the WAHA instance: which calls answer and with what status. No message content, no key, no address.
+    A.call("/diagnostics", async ({ userId }) => {
+      await owner(userId);
+      const c = await core.config(userId);
+      if (!c.base || !c.apiKey) return { configured: false, missingSettings: c.missingSettings, missingSecrets: c.missingSecrets };
+      const probe = async (path: string, query?: Record<string, string>) => {
+        try { return { status: 200, data: await core.waha<unknown>(userId, "GET", path, query ? { query } : {}) }; }
+        catch (e) { if (e instanceof WahaError) return { status: e.status, detail: e.detail, data: null as unknown }; throw e; }
+      };
+      const keys = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? Object.keys(v as object).slice(0, 30) : Array.isArray(v) ? ["[array " + v.length + "]"] : []);
+      const o = core.obj;
+      const version = await probe("/api/version"), one = await probe("/api/sessions/{session}"), all = await probe("/api/sessions", { all: "true" });
+      const s = o(one.data), hooks = Array.isArray(o(s.config).webhooks) ? (o(s.config).webhooks as unknown[]).map((w) => ({ events: Array.isArray(o(w).events) ? (o(w).events as unknown[]).length : 0, hasHmac: !!o(o(w).hmac).key || typeof o(w).hmac === "string" })) : [];
+      const own = await identity.ownChat(userId), me = await identity.me(userId);
+      const working = String(s.status ?? "").toUpperCase() === "WORKING";
+      const lids = working ? await probe("/api/{session}/lids", { limit: "1", offset: "0" }) : null;
+      const exists = working && own ? await probe("/api/contacts/check-exists", { phone: own.split("@")[0] }) : null;
+      const lidOfOwn = working && own ? await probe("/api/{session}/lids/pn/" + encodeURIComponent(own), {}) : null;
+      const overview = working ? await probe("/api/{session}/chats/overview", { limit: "1" }) : null;
+      return {
+        configured: true, session: c.session, basePathPrefix: new URL(c.base).pathname.replace(/\/+$/, "") !== "",
+        version: { status: version.status, detail: (version as { detail?: string }).detail, version: o(version.data).version ?? null, engine: o(version.data).engine ?? null, tier: o(version.data).tier ?? null },
+        sessionRead: { status: one.status, detail: (one as { detail?: string }).detail, sessionStatus: s.status ?? null, engine: o(s.engine).engine ?? null, hasMe: !!s.me, meKeys: keys(s.me), webhooks: hooks },
+        sessions: { status: all.status, detail: (all as { detail?: string }).detail, list: Array.isArray(all.data) ? all.data.slice(0, 30).map((x) => ({ name: o(x).name ?? null, status: o(x).status ?? null, hasMe: !!o(x).me })) : null },
+        lids: lids && { status: lids.status, detail: (lids as { detail?: string }).detail, shape: keys(lids.data), firstKeys: Array.isArray(lids.data) ? keys(lids.data[0]) : [] },
+        checkExistsOwn: exists && { status: exists.status, detail: (exists as { detail?: string }).detail, keys: keys(exists.data), numberExists: o(exists.data).numberExists ?? null, chatIdKind: typeof o(exists.data).chatId === "string" ? String(o(exists.data).chatId).split("@")[1] : null, sameAsSaved: typeof o(exists.data).chatId === "string" ? o(exists.data).chatId === own : null },
+        lidOfOwn: lidOfOwn && { status: lidOfOwn.status, detail: (lidOfOwn as { detail?: string }).detail, keys: keys(lidOfOwn.data), hasLid: typeof o(lidOfOwn.data).lid === "string" && !!o(lidOfOwn.data).lid },
+        chatsOverview: overview && { status: overview.status, detail: (overview as { detail?: string }).detail, shape: keys(overview.data), firstKeys: Array.isArray(overview.data) ? keys(overview.data[0]) : [] },
+        account: me ? { hasId: !!me.id, hasLid: !!me.lid, sameAsSavedNumber: own ? (await identity.canonical(userId, me.id)) === (await identity.canonical(userId, own)) : null } : null,
+        savedNumber: !!own,
+      };
+    });
     A.call("/me", async ({ userId }) => {
       await owner(userId);
       const s = await ctx.settings.get(userId), me = await identity.me(userId);
@@ -201,7 +233,7 @@ export default definePlugin({
       if (!e) return { ok: true };
       const o = await ctx.installOwner();
       if (!o) return { ok: true, ignored: true };
-      if (e.session !== sessionName((await ctx.settings.get(o)).session)) return { ok: true, ignored: true };
+      if (e.session !== (await core.config(o)).session) return { ok: true, ignored: true };
       if (Object.keys(e.me).length) await identity.saveMe(o, e.me);
       await core.emit(o, e);
       return { ok: true };

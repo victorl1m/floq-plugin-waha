@@ -1,7 +1,7 @@
 // Shared plumbing of every runtime module: owner check, configuration, the WAHA HTTP client, input validation and the webhook event bus.
 import type { PluginContext, PluginFetchResponse } from "../shared/sdk";
 import { CHAT_ID, normId } from "./ids.js";
-import { TEXT_MAX, WahaError, normalizeBase, sessionName } from "./client.js";
+import { TEXT_MAX, WahaError, normalizeBase, sessionName, wahaDetail } from "./client.js";
 
 export interface WahaConfig { base: string; apiKey: string; session: string }
 export interface WahaCall { query?: Record<string, string | number | boolean | undefined>; body?: unknown; headers?: Record<string, string> }
@@ -27,6 +27,8 @@ export interface Core {
   wahaBytes(userId: string, urlOrPath: string): Promise<{ bytes: Uint8Array; mime: string }>;
   /** Engine of the session ("" when unknown), cached for a few minutes. */
   engine(userId: string): Promise<Engine>;
+  /** Forgets the cached engine (after switching session). */
+  resetEngine(): void;
   /** Maps an error to the plugin's HTTP error: WahaError 501/404-not-implemented -> 501 unsupported, 422 -> 409 session_not_ready, else 502. Rethrows host errors as they are. */
   fail(error: unknown, what?: string): never;
   /** Runs fn and maps its errors with fail(). */
@@ -66,7 +68,8 @@ export function createCore(ctx: PluginContext): Core {
       const settings = await ctx.settings.get(userId);
       const base = normalizeBase(settings.baseUrl);
       const apiKey = await ctx.secrets.getInstall("WAHA_API_KEY");
-      return { base, apiKey, session: sessionName(settings.session), missingSettings: base ? [] : ["baseUrl"], missingSecrets: apiKey ? [] : ["WAHA_API_KEY"] };
+      const picked = await ctx.kv.get(userId, "session"); // a session chosen on the connection screen wins over the setting
+      return { base, apiKey, session: sessionName(typeof picked === "string" && picked ? picked : settings.session), missingSettings: base ? [] : ["baseUrl"], missingSecrets: apiKey ? [] : ["WAHA_API_KEY"] };
     },
     async ready(userId) {
       const c = await core.config(userId);
@@ -84,7 +87,7 @@ export function createCore(ctx: PluginContext): Core {
       let res: PluginFetchResponse;
       try { res = await ctx.fetchUserUrl(userId, url, { method, headers: { "X-Api-Key": c.apiKey, Accept: "application/json", ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...(call.headers ?? {}) }, body }); }
       catch { throw new WahaError(0); }
-      if (!res.ok) throw new WahaError(res.status);
+      if (!res.ok) throw new WahaError(res.status, wahaDetail(res));
       try { return res.json() as T; } catch { return null as T; }
     },
     async tryWaha<T>(userId: string, method: "GET" | "POST" | "PUT" | "DELETE", path: string, call?: WahaCall): Promise<T | undefined> {
@@ -103,6 +106,7 @@ export function createCore(ctx: PluginContext): Core {
       if (!res.ok) throw new WahaError(res.status);
       return { bytes: res.bytes, mime: String(res.headers?.["content-type"] ?? "").split(";")[0].trim().toLowerCase() };
     },
+    resetEngine() { engineAt = 0; engineVal = ""; },
     async engine(userId) {
       if (Date.now() - engineAt < ENGINE_TTL_MS) return engineVal;
       engineAt = Date.now();
@@ -117,7 +121,7 @@ export function createCore(ctx: PluginContext): Core {
         if (error.status === 422) throw ctx.httpError(409, "session_not_ready", "WhatsApp is not connected. Open the connection screen and link your phone.");
         if (error.status === 401 || error.status === 403) throw ctx.httpError(502, "waha_unauthorized", "WAHA refused the API key.");
         ctx.log.warn(what + " failed", { status: error.status });
-        throw ctx.httpError(502, "waha_unavailable", error.status ? "WAHA could not do that." : "WAHA did not answer. Check that your instance is running.");
+        throw ctx.httpError(502, "waha_unavailable", error.status ? `WAHA answered ${error.status}${error.detail ? ": " + error.detail : ""}${error.status === 404 && !error.detail ? " (not found: check the WAHA address and session name in the plugin settings)" : ""}` : "WAHA did not answer. Check that your instance is running.");
       }
       throw error;
     },

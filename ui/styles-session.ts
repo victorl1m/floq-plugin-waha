@@ -42,6 +42,20 @@ export const SESSION_CSS = `
 .wa-pair{width:min(460px,100%);display:flex;flex-direction:column;gap:8px}
 .wa-pair .wa-sess-sub{margin-bottom:12px}
 .wa-pair label{font-size:13px;font-weight:500;color:var(--wa-sub)}
+.wa-spick{max-width:520px;flex:none}
+.wa-spick>*{flex:none}
+.wa-spick-busy{display:flex;justify-content:center;padding:24px 0}
+.wa-root .wa-spick-list{list-style:none;margin:4px 0 18px;padding:0;display:flex;flex-direction:column;gap:8px;max-height:264px;overflow:auto;flex:none}
+.wa-root .wa-spick-list li{flex:none}
+.wa-root .wa-spick-item{display:flex;box-sizing:border-box;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:56px;padding:8px 14px;border:1px solid var(--wa-line);border-radius:12px;background:var(--wa-field);color:var(--wa-text);font:inherit;text-align:left;cursor:pointer}
+.wa-root .wa-spick-item:hover:not(:disabled),.wa-root .wa-spick-item:focus-visible{border-color:var(--wa-green);outline:0}
+.wa-root .wa-spick-item:disabled{opacity:.6;cursor:default}
+.wa-spick-main{display:flex;flex-direction:column;min-width:0}
+.wa-spick-main b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wa-spick-main span{font-size:13px;color:var(--wa-sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wa-spick-st{flex:none;font-size:13px;color:var(--wa-sub)}
+.wa-spick-st.wa-ok{color:var(--wa-green)}
+@media (max-width:480px){.wa-spick .wa-pair-row{flex-direction:column}.wa-root .wa-spick .wa-pair-row input{flex:none;width:100%;box-sizing:border-box}}
 .wa-pair-row{display:flex;gap:10px;align-items:stretch}
 .wa-root .wa-pair-row input{flex:1;min-width:0;height:44px;padding:0 16px;border:1px solid var(--wa-line);border-radius:12px;background:var(--wa-field);color:var(--wa-text);font:inherit;font-size:16px;box-shadow:none;outline:0}
 .wa-root .wa-pair-row input:focus,.wa-root .wa-pair-row input:focus-visible{border-color:var(--wa-green);box-shadow:0 0 0 1px var(--wa-green);outline:0}
