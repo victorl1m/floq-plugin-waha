@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { PGlite } from "@electric-sql/pglite";
+import { newDb } from "./_db.mjs";
 
 let tmp, plugin, migrations, session, shared;
 const bundle = async (name, src) => {
@@ -20,7 +20,7 @@ before(async () => {
   ({ migrations } = await bundle("mig.mjs", "../runtime/migrations.ts"));
   session = await bundle("session.mjs", "../runtime/session.ts");
   // One database for the file (creating one per test is slow); the routes under test keep their state in kv, which is per harness.
-  shared = new PGlite();
+  shared = await newDb();
   for (const m of migrations) await shared.exec(m.sql.replaceAll("{{p}}", ""));
 });
 after(async () => { await shared.close(); rmSync(tmp, { recursive: true, force: true }); });

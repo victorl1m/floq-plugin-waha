@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { PGlite } from "@electric-sql/pglite";
+import { newDb } from "./_db.mjs";
 
 const bundle = async (tmp, name, src) => {
   const out = join(tmp, name);
@@ -17,9 +17,9 @@ export async function load() {
   const plugin = (await bundle(tmp, "rt.mjs", "../runtime/index.ts")).default;
   const { migrations } = await bundle(tmp, "mig.mjs", "../runtime/migrations.ts");
   // One database per test file (PGlite starts slowly); every harness() empties its tables.
-  const db = new PGlite();
+  const db = await newDb();
   for (const m of migrations) await db.exec(m.sql.replaceAll("{{p}}", ""));
-  const tables = (await db.query("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).rows.map((r) => r.tablename);
+  const tables = (await db.query("SELECT tablename FROM pg_tables WHERE schemaname = current_schema()")).rows.map((r) => r.tablename);
   return { plugin, migrations, db, tables, cleanup: async () => { await plugin.stop(); await db.close(); rmSync(tmp, { recursive: true, force: true }); } };
 }
 

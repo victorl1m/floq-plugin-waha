@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { PGlite } from "@electric-sql/pglite";
+import { newDb } from "./_db.mjs";
 
 let tmp, n = 0;
 export async function bundle(src) {
@@ -24,7 +24,7 @@ export async function closeAll() { for (const h of open.splice(0)) { await h.plu
  * opts.seed runs before `opts.seedBefore` (a migration id; default: after all migrations). opts.settings / opts.phone / opts.owner / opts.approval.
  */
 export async function harness(plugin, migrations, opts = {}) {
-  const db = new PGlite();
+  const db = await newDb();
   for (const m of migrations) { if (opts.seed && opts.seedBefore === m.id) await db.exec(opts.seed); await db.exec(m.sql.replaceAll("{{p}}", "")); }
   if (opts.seed && !opts.seedBefore) await db.exec(opts.seed);
   const routes = {}, internal = {}, events = [], toasts = [], requests = [], approvals = [], kv = new Map(Object.entries(opts.kv ?? {}));

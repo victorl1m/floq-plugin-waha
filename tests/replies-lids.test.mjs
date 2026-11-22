@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { PGlite } from "@electric-sql/pglite";
+import { newDb } from "./_db.mjs";
 
 let tmp, plugin, client, migrations, chat;
 const bundle = async (name, src) => {
@@ -30,7 +30,7 @@ const ev = (payload, extra = {}) => ({ event: "message", session: "default", pay
 
 /** The plugin on an in-memory Postgres. `waha(url, init)` answers WAHA requests; `seed` runs between migration 002 and 003. */
 async function harness({ waha, seed } = {}) {
-  const db = new PGlite();
+  const db = await newDb();
   open.push(db);
   for (const m of migrations) { if (m.id === "003_replies_lids" && seed) await db.exec(seed); await db.exec(m.sql.replaceAll("{{p}}", "")); }
   const routes = {}, internal = {}, events = [], sent = [], kv = new Map();

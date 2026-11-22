@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { PGlite } from "@electric-sql/pglite";
+import { newDb } from "./_db.mjs";
 
 export const PN = "5534999990000@c.us", LID = "123456789012345@lid", GROUP = "120363041234567890@g.us";
 export const ME = "5511000000000@c.us", MELID = "999999999999@lid";
@@ -26,9 +26,9 @@ export async function cleanup() { await shared?.close(); rmSync(tmp, { recursive
 /** waha(method, path, body, query) answers a WAHA request: { status, json } or undefined (404). Every request is recorded in `calls`. */
 export async function harness({ waha, owner = "u1" } = {}) {
   // One database per test file (creating one is slow): every table is emptied for each harness.
-  if (!shared) { shared = new PGlite(); for (const m of migrations) await shared.exec(m.sql.replaceAll("{{p}}", "")); }
+  if (!shared) { shared = await newDb(); for (const m of migrations) await shared.exec(m.sql.replaceAll("{{p}}", "")); }
   const db = shared;
-  const tables = (await db.query("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).rows.map((r) => r.tablename);
+  const tables = (await db.query("SELECT tablename FROM pg_tables WHERE schemaname = current_schema()")).rows.map((r) => r.tablename);
   await db.exec("TRUNCATE " + tables.join(", "));
   const routes = {}, events = [], calls = [], kv = new Map([["phone", "+" + ME.split("@")[0]]]), toasts = [];
   let webhook;
