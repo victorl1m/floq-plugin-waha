@@ -8,7 +8,7 @@ export class ManifestError extends Error {
 
 /** No "--" or trailing "-": ids map to schema/prefix names where those would collide (a--b vs a + b__). */
 /** Path segments of the host\'s own `/v1/plugins/*` routes. */
-export const RESERVED_IDS = ["catalog", "install"];
+export const RESERVED_IDS = ["catalog", "install", "sources", "inspect-url", "install-url", "updates", "secret-migrations"];
 const ID = /^[a-z](?:[a-z0-9]|-(?=[a-z0-9])){1,31}$/;
 const SUB_ID = /^[a-z][a-z0-9-]{0,31}$/;
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
@@ -16,7 +16,6 @@ const SETTING_KEY = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const ICON = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
 const HOST = /^(?:\*\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
 const SETTING_TYPES = ["text", "url", "number", "boolean", "select", "secretRef"];
-const HEADER_PLACEHOLDER = /\{\{([^{}]*)\}\}/g;
 
 const fail = (msg: string): never => { throw new ManifestError(msg); };
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -152,10 +151,6 @@ export function parseManifest(input: unknown): PluginManifest {
     return name;
   });
 
-  const requireDeclared = (name: string, path: string) => {
-    if (!VAULT_NAME.test(name)) fail(`${path}: secret name must match the vault name format`);
-    if (!secretNames.has(name)) fail(`${path}: references an undeclared secret`);
-  };
   const mcpSeen = new Set<string>();
   const mcpServers = arr(c.mcpServers, "contributes.mcpServers", 16).map((raw, i) => {
     const p = `contributes.mcpServers[${i}]`;
@@ -172,11 +167,10 @@ export function parseManifest(input: unknown): PluginManifest {
     if (type === "stdio" && !command) fail(`${p}.command is required for stdio`);
     if (type === "http" && !url) fail(`${p}.url is required for http`);
     const args = r.args === undefined ? undefined : arr(r.args, `${p}.args`, 64).map((a, j) => str(a, `${p}.args[${j}]`, 1024));
-    const envSecrets = strMap(r.envSecrets, `${p}.envSecrets`);
-    if (envSecrets) for (const v of Object.values(envSecrets)) requireDeclared(v, `${p}.envSecrets`);
-    const headerSecrets = strMap(r.headerSecrets, `${p}.headerSecrets`);
-    if (headerSecrets) for (const tpl of Object.values(headerSecrets)) for (const mt of tpl.matchAll(HEADER_PLACEHOLDER)) requireDeclared(mt[1], `${p}.headerSecrets`);
-    return { name, type, command, args, url, env: strMap(r.env, `${p}.env`), headers: strMap(r.headers, `${p}.headers`), envSecrets, headerSecrets };
+    // Plugin secrets never enter the agent sandbox: an MCP server written into an agent's config runs as the agent and could be read by it.
+    // Follow-up: a runtime-side plugin MCP gateway (design section 3) will serve secret-bearing capability without exposing values.
+    if (r.envSecrets !== undefined || r.headerSecrets !== undefined) fail(`${p}: plugin secrets cannot be passed into the agent sandbox`);
+    return { name, type, command, args, url, env: strMap(r.env, `${p}.env`), headers: strMap(r.headers, `${p}.headers`) };
   });
 
   return {

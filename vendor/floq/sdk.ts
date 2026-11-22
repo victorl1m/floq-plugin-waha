@@ -31,10 +31,7 @@ export interface PluginMcpServerDecl {
   url?: string;
   env?: Record<string, string>;
   headers?: Record<string, string>;
-  /** env var name -> declared secret name */
-  envSecrets?: Record<string, string>;
-  /** header name -> template with {{SECRET}} placeholders of declared secrets */
-  headerSecrets?: Record<string, string>;
+  // No secret env or headers: plugin secrets never enter the agent sandbox (the manifest validator rejects envSecrets/headerSecrets).
 }
 
 export interface PluginContributes {
@@ -48,8 +45,8 @@ export interface PluginContributes {
   mcpServers: PluginMcpServerDecl[];
   skills: string[];
   migrations: boolean;
-  /** Needs `ctx.attention`: see pending questions/approvals of the owner. */
-  attention?: boolean;
+  /** Lets the plugin see the install owner's pending decisions/approvals and answer them (`ctx.attention`). Install-scoped plugins only. */
+  attention: boolean;
 }
 
 export interface PluginManifest {
@@ -139,6 +136,48 @@ export interface PluginWebhooks {
    * returning false answers 401. There is no calling user: use `ctx.secrets.getInstall`.
    */
   on(name: string, handler: WebhookHandler, options?: { verify?: (req: WebhookRequest) => boolean | Promise<boolean> }): void;
+  /**
+   * Install-scoped plugins only: the full public URL of a declared webhook, `<public base>/v1/plugins/<id>/hooks/<name>/<token>`, so the plugin
+   * can register it with the outside service itself. The token is a host-managed one (created on first use, valid next to the one an admin
+   * rotates by hand; an admin rotation replaces both). Null when the runtime has no address the outside can reach (BETTER_AUTH_URL is a
+   * loopback address and FLOQ_PUBLIC_URL is not set). The URL is a credential: never log it or return it from a route.
+   */
+  url(name: string): Promise<string | null>;
+}
+
+export interface PluginNotifyAction {
+  /** Sent back to the plugin's action route. Letters, digits, - and _; at most 32 characters. */
+  id: string;
+  /** Button text, at most 40 characters. */
+  label: string;
+  /** Present: the action takes one line of text typed by the user (an inline reply). */
+  input?: { placeholder?: string };
+}
+export interface PluginNotifyInput {
+  /** "message": a person wrote (avatar, name, preview, inline reply). Default "message". */
+  kind?: "message";
+  /** Sender or headline, at most 120 characters. */
+  title: string;
+  /** Preview text, at most 2000 characters. */
+  body?: string;
+  /** Small line above the title next to the plugin name (account, group), at most 120 characters. */
+  subtitle?: string;
+  /** `data:image/(png|jpeg|webp|gif);base64,...` of at most 32 KiB. Anything else is dropped (initials are shown). */
+  avatar?: string;
+  /** A new notification with the same tag replaces the previous one of this plugin and user (one per chat). At most 200 characters. */
+  tag?: string;
+  /** At most 4. */
+  actions?: PluginNotifyAction[];
+  /** The plugin's own POST route (`ctx.routes.post`) that receives `{ notificationId, actionId, input, data }` as the user. Required with actions. */
+  actionRoute?: string;
+  /** Opaque JSON (at most 2 KiB) handed back to the action route. Never sent to the app. */
+  data?: unknown;
+  /** Where "open" goes: one of the plugin's own views plus string params the view receives (`usePluginOpen` in the UI SDK). */
+  target?: { view: string; params?: Record<string, string> };
+}
+export interface PluginNotifications {
+  /** Removes this plugin's notifications of that user with this tag (the chat was read elsewhere). */
+  clear(userId: string, tag: string): Promise<void>;
 }
 
 export interface PluginEvents {
@@ -155,23 +194,38 @@ export interface PluginApprovals {
   request(input: { userId: string; action: string; detail?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<"approved" | "denied" | "expired">;
 }
 
-export interface AttentionItem {
-  kind: "decision" | "approval";
-  id: string; userId: string; sessionName?: string; projectId?: string;
-  questions?: { id: string; question?: string; text?: string; options?: ({ id: string; label: string } | string)[]; multiSelect?: boolean; allowText?: boolean }[];
-  action?: string; detail?: string; options?: ({ id: string; label: string } | string)[]; allowText?: boolean; irreversible?: boolean; createdAt?: number | string;
-}
+export interface AttentionQuestion { id: string; question: string; header?: string; options: { id: string; label: string; description?: string }[]; multiSelect: boolean; allowText: boolean }
+export type AttentionPending =
+  | { kind: "decision"; id: string; userId: string; sessionName: string; sessionId: string; projectId: string | null; questions: AttentionQuestion[]; allowText: boolean; irreversible: false; createdAt: string }
+  | { kind: "approval"; id: string; userId: string; sessionName: string; sessionId: string; projectId: string | null; action: string; detail: string; options: { id: "allow" | "deny"; label: string }[]; allowText: false; irreversible: boolean; createdAt: string };
+export interface AttentionResolved { kind: "decision" | "approval"; id: string; status: string; by: "app" | "plugin" }
 export interface PluginAttention {
-  onPending(fn: (item: AttentionItem) => void): () => void;
-  onResolved(fn: (e: { kind: "decision" | "approval"; id: string; status: string; by: "app" | "plugin" }) => void): () => void;
+  /**
+   * Requires `contributes.attention` and an install-scoped plugin. Calls `fn` for every pending item of the install owner (replayed on subscribe,
+   * then live). Plugin-originated approvals are never delivered. Returns an unsubscribe function. The owner is read when you subscribe.
+   */
+  onPending(fn: (item: AttentionPending) => void): () => void;
+  /** Called once for each item previously delivered to `onPending` when it ends (answered, cancelled, expired). `by` is "plugin" when this plugin answered it. */
+  onResolved(fn: (event: AttentionResolved) => void): () => void;
+  /** Answers as the install owner (the host binds the user; it is never a parameter). Rejects with `status` 409 when already answered. */
   resolveDecision(id: string, answers: { questionId: string; optionIds: string[]; text: string }[]): Promise<void>;
+  /** Answers as the install owner. "allow" is refused (403) for irreversible actions and for plugin-originated approvals. Audited as `resolvedVia: "plugin:<id>"`. 409 when already answered. */
   resolveApproval(id: string, decision: "allow" | "deny"): Promise<void>;
+}
+
+/** Host API for the bundled `storage-sense` plugin only (other plugins get a refusal): cleanup of what agents leave in awake homes. */
+export interface PluginStorageSense {
+  awakeUserIds(): string[];
+  run(userId: string, config: import("../storageSense/plan.js").StorageSenseConfig, options: { dryRun: boolean; trigger: "schedule" | "low-space" | "manual"; budgetMs?: number }): Promise<import("../storageSense/plan.js").StorageSenseReport | null>;
+  freePercent(userId: string): Promise<number | null>;
+  /** Sends a notification (category system) to the user. */
+  notify(userId: string, note: { title: string; body: string; level: "info" | "warning" }): Promise<void>;
 }
 
 export interface PluginContext {
   readonly pluginId: string;
   readonly manifest: PluginManifest;
-  /** Install-scoped plugins only: the administrator who enabled the plugin (whose vault and settings it uses), or null. */
+  /** Install-scoped plugins only: the administrator who enabled the plugin (who owns the install's settings and any owner-only views), or null. */
   installOwner(): Promise<string | null>;
   /** Builds the host's `HttpError` (status, code, message) so a bundled plugin needs no host imports. Throw it from a route or provider. */
   httpError(status: number, code: string, message: string): Error;
@@ -179,15 +233,24 @@ export interface PluginContext {
   internalRoutes: PluginInternalRoutes;
   webhooks: PluginWebhooks;
   secrets: {
-    /** User-scoped plugins: the calling user's own secret. Only names declared in the manifest; throws otherwise. */
+    /** Install-scoped plugins only: stores a declared install secret in the plugin secret store (a key the plugin generates itself, e.g. a webhook HMAC key). Audited as `plugin:<id>`. */
+    setInstall(name: string, value: string): Promise<void>;
+    /** User-scoped plugins only: the calling user's own secret from the plugin secret store (never the vault). Declared names only; throws for install scope. */
     get(userId: string, name: string): Promise<string | undefined>;
-    /** Install-scoped plugins only: the secret of the admin who enabled the plugin (`floq_plugins.config_owner`). Throws for user-scoped plugins. */
+    /** Install-scoped plugins only: the installation's secret from the plugin secret store (never the vault). Throws for user-scoped plugins. */
     getInstall(name: string): Promise<string | undefined>;
   };
   fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
   /** Like `fetch`, but reaches only the origin of a saved `url` setting (self-hosted services). Needs a `url` setting in the manifest. */
   fetchUserUrl(userId: string, url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
   db: PluginDb;
+  /**
+   * A notification for that user from this plugin: Notification Center (category "message") and the island, with the plugin's own actions.
+   * An action only ever calls `actionRoute` of this same plugin, as the user who clicked, through the host. Text is cleaned like any
+   * notification. Rate-limited per user and plugin (120 a minute; throws HttpError 429).
+   */
+  notify(userId: string, note: PluginNotifyInput): Promise<{ id: string }>;
+  notifications: PluginNotifications;
   /** Shows a toast in that user's open apps (a `toast` event the host renders). Title up to 120 chars, description up to 300. */
   toast(userId: string, toast: { title: string; description?: string }): void;
   settings: {
@@ -199,10 +262,13 @@ export interface PluginContext {
     set(userId: string, key: string, value: unknown): Promise<void>;
   };
   taskSources: PluginTaskSources;
+  /** User ids that switched this (user-scoped) plugin on. */
+  enabledUserIds(): Promise<string[]>;
+  /** Only for the bundled `storage-sense` plugin; throws for any other plugin. */
+  storageSense: PluginStorageSense;
   events: PluginEvents;
   approvals: PluginApprovals;
-  /** Requires `contributes.attention`. */
-  attention?: PluginAttention;
+  attention: PluginAttention;
   log: PluginLog;
   /** Serialized: a run is skipped while the previous one is still in flight. Returns a cancel function. Cleared on stop. */
   schedule(intervalMs: number, fn: () => void | Promise<void>): () => void;

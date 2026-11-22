@@ -16,6 +16,17 @@ export class CatalogError extends Error {
 export interface CatalogEntry {
   id: string; name: string; version: string; apiVersion: number; description: string; icon?: string; scope: "user" | "install";
   secrets: string[]; network: string[]; contributes: string[]; minFloq?: string; package: string; sha256: string;
+  /** Optional, from the catalog: a short grouping label for the explorer filter. */
+  category?: string;
+  /** `owner/repo` of the GitHub release the package comes from (derived from `package`, never trusted from the catalog). Used for the repo avatar. */
+  repo?: string;
+  /** Optional, from the catalog: the plugin is no longer developed (the text says what replaces it). It is not offered for new installs. */
+  deprecated?: string;
+}
+
+/** `owner/repo` of a package release URL, or undefined. */
+export function repoOfPackage(raw: string): string | undefined {
+  try { const m = /^\/([^/]+)\/([^/]+)\/releases\/download\//.exec(new URL(raw).pathname); return m ? `${m[1]}/${m[2]}` : undefined; } catch { return undefined; }
 }
 
 type FetchLike = (url: string, init: { redirect: "manual"; signal: AbortSignal; headers?: Record<string, string> }) => Promise<Response>;
@@ -90,9 +101,38 @@ export function parseCatalog(bytes: Buffer): CatalogEntry[] {
     if (!ID.test(id) || seen.has(id) || !SEMVER.test(version) || !/^[0-9a-f]{64}$/.test(sha) || !packageUrlAllowed(pkg) || p.apiVersion !== 1) continue;
     seen.add(id);
     out.push({ id, name: str(p.name, 80) || id, version, apiVersion: 1, description: str(p.description, 500), icon: str(p.icon, 64) || undefined, scope: p.scope === "install" ? "install" : "user",
-      secrets: strs(p.secrets, 32, 64), network: strs(p.network, 32, 253), contributes: strs(p.contributes, 16, 32), minFloq: str(p.minFloq, 32) || undefined, package: pkg, sha256: sha });
+      secrets: strs(p.secrets, 32, 64), network: strs(p.network, 32, 253), contributes: strs(p.contributes, 16, 32), minFloq: str(p.minFloq, 32) || undefined, package: pkg, sha256: sha,
+      category: str(p.category, 32).trim() || undefined, repo: repoOfPackage(pkg),
+      ...(p.deprecated === true ? { deprecated: "This plugin is deprecated." } : str(p.deprecated, 300).trim() ? { deprecated: str(p.deprecated, 300).trim() } : {}) });
   }
   return out;
+}
+
+/** A release download of exactly this repository (case as GitHub reports it, compared case-insensitively). */
+export function repoDownloadAllowed(raw: string, ref: RepoRef): boolean {
+  try {
+    const u = new URL(raw);
+    const prefix = `/${ref.owner}/${ref.repo}/releases/download/`.toLowerCase();
+    return u.protocol === "https:" && u.hostname === PACKAGE_HOST && !u.username && !u.password && !u.port && u.pathname.toLowerCase().startsWith(prefix) && !u.pathname.includes("..");
+  } catch { return false; }
+}
+
+export const GITHUB_API_HOST = "api.github.com";
+const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const REPO = /^(?!\.)[A-Za-z0-9._-]{1,100}$/;
+
+export interface RepoRef { owner: string; repo: string }
+export interface ReleaseAsset { tag: string; name: string; url: string }
+
+/** `https://github.com/<owner>/<repo>` (optionally with `.git` or a trailing slash). Nothing else is a repository address. */
+export function parseRepoUrl(raw: unknown): RepoRef | null {
+  if (typeof raw !== "string" || raw.length > 300) return null;
+  let u: URL;
+  try { u = new URL(raw.trim()); } catch { return null; }
+  if (u.protocol !== "https:" || u.hostname !== PACKAGE_HOST || u.username || u.password || u.port || u.search || u.hash) return null;
+  const m = /^\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(u.pathname);
+  if (!m || !OWNER.test(m[1]) || !REPO.test(m[2]) || m[2].includes("..")) return null;
+  return { owner: m[1], repo: m[2] };
 }
 
 export interface CatalogClientOptions { fetchImpl?: FetchLike; catalogUrl?: string }
@@ -108,6 +148,29 @@ export class CatalogClient {
   async list(): Promise<CatalogEntry[]> {
     const u = new URL(this.catalogUrl);
     return parseCatalog(await get(this.fetchImpl, this.catalogUrl, CATALOG_MAX_BYTES, [u.hostname]));
+  }
+
+  /**
+   * The newest published release of a repository and its package asset (`*.floqpkg.json`). Only the release API is asked; a branch or a
+   * file in the tree is never fetched. The asset must be a download of that same repository.
+   */
+  async latestRelease(ref: RepoRef): Promise<ReleaseAsset> {
+    const api = `https://${GITHUB_API_HOST}/repos/${encodeURIComponent(ref.owner)}/${encodeURIComponent(ref.repo)}/releases/latest`;
+    let body: { tag_name?: unknown; assets?: unknown };
+    try { body = JSON.parse((await get(this.fetchImpl, api, CATALOG_MAX_BYTES, [GITHUB_API_HOST])).toString("utf8")); }
+    catch (error) { if (error instanceof CatalogError && /HTTP 404/.test(error.message)) throw new CatalogError("That repository has no published release.", 404); throw error instanceof CatalogError ? error : new CatalogError("The release information could not be read."); }
+    const assets = (Array.isArray(body.assets) ? body.assets : []) as { name?: unknown; browser_download_url?: unknown }[];
+    const pkgs = assets.filter((a) => typeof a?.name === "string" && a.name.endsWith(".floqpkg.json"));
+    if (pkgs.length !== 1) throw new CatalogError(pkgs.length ? "The release has more than one package file." : "The latest release has no .floqpkg.json package.", 422);
+    const url = String(pkgs[0].browser_download_url ?? "");
+    if (!repoDownloadAllowed(url, ref)) throw new CatalogError("The package is not hosted in that repository's releases.", 422);
+    return { tag: typeof body.tag_name === "string" ? body.tag_name.slice(0, 64) : "", name: String(pkgs[0].name), url };
+  }
+
+  /** The raw bytes of a release asset of `ref` (same download rules as catalog packages: https, github.com, pinned CDN redirects, 5 MiB). */
+  async downloadAsset(asset: ReleaseAsset, ref: RepoRef): Promise<Buffer> {
+    if (!repoDownloadAllowed(asset.url, ref)) throw new PackageError("the package address is not allowed");
+    return get(this.fetchImpl, asset.url, PACKAGE_MAX_BYTES, [PACKAGE_HOST]);
   }
 
   /** The raw bytes of a package (verification against the catalog sha256 happens in `parsePackage`). */

@@ -116,6 +116,8 @@ export async function buildPlugin() {
     id: manifest.id, name: manifest.name, version: manifest.version, apiVersion: manifest.apiVersion, description: manifest.description, icon: manifest.icon, scope: manifest.scope,
     secrets: (manifest.secrets ?? []).map((s) => s.name), network: manifest.network?.allow ?? [], contributes,
     ...(manifest.minFloq ? { minFloq: manifest.minFloq } : {}),
+    // The plugin is deprecated: Floq does not offer it for new installs and shows this notice where it is installed.
+    deprecated: "WhatsApp is now built into Floq: Settings > Integrations. Update Floq to use it; your chats, accounts and settings carry over and this plugin is switched off by itself.",
     package: `https://github.com/victorl1m/floq-plugin-${manifest.id}/releases/download/v${manifest.version}/${file}`, sha256: digest,
   };
   return { file, bytes, sha256: digest, entry };

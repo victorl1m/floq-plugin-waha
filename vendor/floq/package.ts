@@ -94,6 +94,21 @@ export function parsePackage(bytes: Uint8Array | string, expected: CatalogRef, o
   return { manifest, runtime: raw.runtime, ui: typeof raw.ui === "string" && raw.ui.trim() ? raw.ui : null, skills: parseSkills(raw.skills, manifest), sha256: digest, size: buf.length };
 }
 
+/**
+ * For a package nobody listed in a catalog (a repository the admin pasted): there is no expected sha256, so the digest is computed here and
+ * the admin confirms it. Everything else is verified exactly as for a catalog package (the id and version are read from the package's own
+ * manifest, which must still pass `parseManifest`).
+ */
+export function inspectPackage(bytes: Uint8Array | string, options: { builtinIds: ReadonlySet<string> | string[] }): PluginPackage {
+  const buf = typeof bytes === "string" ? Buffer.from(bytes) : Buffer.from(bytes);
+  if (buf.length > PACKAGE_MAX_BYTES) throw new PackageError("the package is larger than 5 MiB");
+  let peek: { manifest?: { id?: unknown; version?: unknown } } | null = null;
+  try { peek = JSON.parse(buf.toString("utf8")); } catch { throw new PackageError("the package is not valid JSON"); }
+  const id = peek?.manifest?.id, version = peek?.manifest?.version;
+  if (typeof id !== "string" || typeof version !== "string") throw new PackageError("the package has no manifest id and version");
+  return parsePackage(buf, { id, version, sha256: sha256Hex(buf) }, options);
+}
+
 /** `a` > `b` by semver precedence of the numeric core (pre-release tags sort below the release). */
 export function compareVersions(a: string, b: string): number {
   const core = (v: string) => v.split(/[-+]/)[0].split(".").map((n) => Number.parseInt(n, 10) || 0);

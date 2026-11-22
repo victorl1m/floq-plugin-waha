@@ -1,9 +1,9 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "apiVersion": 1,
-  "description": "WhatsApp in Floq on your own WAHA instance: several accounts side by side, your chat history and contacts imported when you link, chats, media, voice notes, reactions, groups and login by QR. The AI can read it and message you freely on your own number; messages to other people need your approval.",
+  "description": "DEPRECATED: WhatsApp is now built into Floq (Settings > Integrations); update Floq, your chats, accounts and settings carry over. This plugin gets no further updates. It was: WhatsApp in Floq on your own WAHA instance, with several accounts, history import, media, groups and AI access with approvals.",
   "icon": "IconBrandWhatsapp",
   "scope": "install",
   "secrets": [
@@ -23,6 +23,7 @@
     "migrations",
     "settingsPanel"
   ],
-  "package": "https://github.com/victorl1m/floq-plugin-waha/releases/download/v3.2.0/waha-3.2.0.floqpkg.json",
-  "sha256": "1cf80a61f7021d7dceebb1015217c543f2f846cf5dad45bcaf8fdc1a5160cd07"
+  "deprecated": "WhatsApp is now built into Floq: Settings > Integrations. Update Floq to use it; your chats, accounts and settings carry over and this plugin is switched off by itself.",
+  "package": "https://github.com/victorl1m/floq-plugin-waha/releases/download/v3.2.1/waha-3.2.1.floqpkg.json",
+  "sha256": "be7fbd6b03c8e96fd244332ebbe8731ce9b47fc5900fa8b619c7a317c9a2c83e"
 }

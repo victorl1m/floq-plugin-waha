@@ -1,4 +1,6 @@
-# floq-plugin-waha
+# floq-plugin-waha (deprecated)
+
+> **Deprecated.** WhatsApp is now built into Floq: **Settings > Integrations**. Update Floq to use it. A Floq that has WhatsApp built in adopts this plugin's data in place (chats, messages, accounts, settings, API key, webhook address) and removes the installed package by itself, so nothing has to be migrated by hand. Version 3.2.1 is the last release of this plugin; it only adds this notice (a banner above the inbox). Development continues in the Floq repository (`runtime/src/plugins/whatsapp`, `src/plugins/whatsapp`). The repository and its releases stay available for Floq versions without the built-in integration.
 
 A WhatsApp inbox in Floq backed by your own WAHA instance; the AI can read it and message you freely; sending to others asks you first.
 
