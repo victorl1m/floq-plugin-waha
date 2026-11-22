@@ -29,7 +29,7 @@ export interface LogApi {
 export const LogCtx = createContext<LogApi | null>(null);
 const useLog = () => { const v = useContext(LogCtx); if (!v) throw new Error("bubble outside the log"); return v; };
 
-/** Bar and name colour of a quote: green for your own message, the sender's hue otherwise. */
+/** Bar and name colour of a quote: the accent for your own message, the sender's hue otherwise. */
 export const quoteStyle = (q: { fromMe: boolean; sender: string }, chat: Chat) => (q.fromMe ? undefined : ({ "--wa-qh": hueOf(q.sender || chat.chatId) } as CSSProperties));
 
 export const QUICK = ["👍", "❤️", "😂", "😮", "😢", "🙏"];

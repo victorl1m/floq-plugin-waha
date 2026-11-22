@@ -49,7 +49,7 @@ function PosterAvatar({ poster, items, seen, size }: { poster: StatusPoster; ite
   const src = useAvatar({ chatId: poster.chatId || "me", avatar: poster.avatar });
   const n = Math.min(items, 24), gap = n > 1 ? 6 : 0, seg = 360 / Math.max(n, 1);
   const stops = Array.from({ length: n }, (_, i) => {
-    const c = i < seen ? "var(--wa-ring-seen)" : "var(--wa-green)", a = i * seg + gap / 2, b = (i + 1) * seg - gap / 2;
+    const c = i < seen ? "var(--wa-ring-seen)" : "var(--wa-accent)", a = i * seg + gap / 2, b = (i + 1) * seg - gap / 2;
     return `transparent ${a - gap / 2}deg ${a}deg, ${c} ${a}deg ${b}deg, transparent ${b}deg ${b + gap / 2}deg`;
   }).join(",");
   return (

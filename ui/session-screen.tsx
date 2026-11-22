@@ -70,7 +70,7 @@ export function QrCode({ value }: { value: string }) {
   return (
     <svg viewBox={`0 0 ${svg.size} ${svg.size}`} role="img" aria-label="QR code to link WhatsApp" shapeRendering="crispEdges">
       <rect width={svg.size} height={svg.size} fill="#fff" />
-      <path d={svg.d} fill="#111b21" />
+      <path d={svg.d} fill="#111111" />
     </svg>
   );
 }

@@ -1,7 +1,5 @@
 // Styles added in 3.0 for the chat list and the frame around the conversation (pictures, state icons, archived entry, side panel slots).
 export const INBOX_CSS = `
-.wa-root{--wa-tick-read:#53bdeb;--wa-danger:#ea0038}
-.dark .wa-root,.wa-root.wa-dark{--wa-tick-read:#53bdeb;--wa-danger:#f15c6d}
 .wa-avatar-img{background:var(--wa-active);overflow:hidden}
 .wa-avatar-img img{width:100%;height:100%;object-fit:cover;display:block;border-radius:50%}
 .wa-preview .wa-tick-read,.wa-tick-read{color:var(--wa-tick-read)}
@@ -19,24 +17,20 @@ export const INBOX_CSS = `
 @media (hover:none){.wa-rowmenu{display:none!important}}
 .wa-archived{flex:none;display:flex;align-items:center;gap:22px;width:100%;height:50px;padding:0 20px 0 26px;border:0;border-bottom:1px solid var(--wa-line);background:transparent;color:var(--wa-text);font:inherit;font-size:15px;text-align:left;cursor:pointer}
 .wa-archived:hover{background:var(--wa-hover)}
-.wa-archived:focus-visible{outline:2px solid var(--wa-green);outline-offset:-2px}
-.wa-archived svg{width:20px;height:20px;color:var(--wa-green-text)}
+.wa-archived:focus-visible{outline:2px solid var(--wa-accent);outline-offset:-2px}
+.wa-archived svg{width:20px;height:20px;color:var(--wa-accent-text)}
 .wa-archived span{flex:1}
-.wa-archived b{font-size:12px;font-weight:600;color:var(--wa-green-text)}
+.wa-archived b{font-size:12px;font-weight:600;color:var(--wa-accent-text)}
 .wa-head-actions{display:flex;align-items:center;gap:2px;margin-left:auto}
 .wa-chat-head .wa-who{flex:1;min-width:0}
 .wa-root .wa-who-btn{flex:1;min-width:0;display:flex;align-items:center;gap:12px;height:100%;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
-.wa-root .wa-who-btn:focus-visible{outline:2px solid var(--wa-green);outline-offset:-2px}
+.wa-root .wa-who-btn:focus-visible{outline:2px solid var(--wa-accent);outline-offset:-2px}
 .wa-chat-area{position:relative;display:flex;min-width:0;min-height:0}
 .wa-chat-area>.wa-chat-pane{flex:1;min-width:0}
-.wa-side{flex:none;width:clamp(300px,34%,400px);display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--wa-line);background:var(--wa-panel);overflow:hidden}
-@container (max-width:1000px){.wa-side{position:absolute;inset:0;width:auto;border-left:0;z-index:5}}
-.wa-overlay{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;min-height:0;background:var(--wa-panel)}
+.wa-side{flex:none;width:clamp(300px,34%,400px);display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--wa-line);overflow:hidden}
+@container (max-width:1000px){.wa-side{position:absolute;inset:0;width:auto;border-left:0;z-index:5;background:var(--wa-solid)}}
+.wa-overlay{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;min-height:0;background:var(--wa-solid)}
 .wa-list-pane{position:relative}
-.wa-bdlg button[data-variant="default"],.wa-bdlg [data-floq-variant="default"]{background:var(--wa-green);background-image:none;color:#fff;border-color:transparent;box-shadow:none}
-.wa-bdlg button[data-variant="default"]:hover:not(:disabled){background:color-mix(in srgb,var(--wa-green) 88%,#000)}
-.wa-bdlg button[data-variant="default"]:disabled{opacity:.5}
-.wa-bdlg [data-slot="input"]:focus-visible,.wa-bdlg [data-slot="textarea"]:focus-visible{border-color:var(--wa-green);box-shadow:0 0 0 2px color-mix(in srgb,var(--wa-green) 35%,transparent);outline:0}
 .wa-gate{position:absolute;inset:0;display:flex;flex-direction:column;min-height:0;background:var(--wa-bar);overflow:auto}
 .wa-gate>:last-child{flex:1;min-height:0;position:relative}
 .wa-root .wa-gate-back{align-self:flex-start;margin:10px 12px 0;color:var(--wa-sub);gap:6px}

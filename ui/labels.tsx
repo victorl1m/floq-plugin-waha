@@ -13,7 +13,7 @@ export const LABEL_COLORS = ["#ff9485", "#64c4ff", "#ffd429", "#dfaef0", "#99b6c
 /** Black or white text, whichever reads better on a label colour. */
 export function inkOn(hex: string): string {
   const n = Number.parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#111b21" : "#ffffff";
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#16181d" : "#ffffff";
 }
 
 // One label list per api caller, shared by every component on screen.
