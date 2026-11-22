@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePluginEvent } from "@/plugins/kit";
 import { chatKind, displayName, type Chat } from "../shared/chat";
-import { useWa } from "./context";
+import { useWa, useWaEvent } from "./context";
 
 export type PresenceState = "online" | "offline" | "typing" | "recording" | "paused" | "unknown";
 export interface PresenceInfo { state: PresenceState; lastSeen: string | null; participants: { id: string; name: string; state: "typing" | "recording" }[] }
@@ -42,7 +41,7 @@ export function usePresence(chatId: string | null | undefined): PresenceInfo {
     return () => { clearInterval(poll); for (const t of timers.current.values()) clearTimeout(t); timers.current.clear(); };
   }, [on, chatId, read]);
 
-  usePluginEvent<PresenceEvent>(pluginId, "presence", (e) => {
+  useWaEvent<PresenceEvent>("presence", (e) => {
     if (!e || !chatId || e.chatId !== chatId || !e.state) return;
     const key = e.participant ?? "", state = e.state;
     const old = timers.current.get(key);

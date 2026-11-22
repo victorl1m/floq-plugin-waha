@@ -1,9 +1,9 @@
 {
   "id": "waha",
   "name": "WhatsApp (WAHA)",
-  "version": "3.0.3",
+  "version": "3.1.0",
   "apiVersion": 1,
-  "description": "WhatsApp in Floq on your own WAHA instance: chats, media, voice notes, reactions, groups and login by QR. The AI can read it and message you freely on your own number; messages to other people need your approval.",
+  "description": "WhatsApp in Floq on your own WAHA instance: several accounts side by side, chats, media, voice notes, reactions, groups and login by QR. The AI can read it and message you freely on your own number; messages to other people need your approval.",
   "icon": "IconBrandWhatsapp",
   "scope": "install",
   "secrets": [
@@ -23,6 +23,6 @@
     "migrations",
     "settingsPanel"
   ],
-  "package": "https://github.com/victorl1m/floq-plugin-waha/releases/download/v3.0.3/waha-3.0.3.floqpkg.json",
-  "sha256": "158ce1b660fd9e09f4259f473c93e88a4355f902802450589ec16ce7200b3dd8"
+  "package": "https://github.com/victorl1m/floq-plugin-waha/releases/download/v3.1.0/waha-3.1.0.floqpkg.json",
+  "sha256": "51c0a96684c09747f60c64c26f8b9c8f754e95ac3784d980f7dc893c1d21b681"
 }

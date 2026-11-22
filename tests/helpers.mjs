@@ -56,7 +56,7 @@ export async function harness(plugin, migrations, opts = {}) {
     db: { query: async (sql, params) => { const r = await db.query(sql.replaceAll("{{p}}", ""), params); return { rows: r.rows, rowCount: r.rows.length || r.affectedRows || 0 }; } },
     events: { publish: (_u, name, data) => events.push({ name, ...(data ?? {}) }) },
     toast: (_u, t) => toasts.push(t),
-    log: { warn() {}, info() {}, debug() {}, error() {} },
+    log: { warn(...a) { if (process.env.WAHA_TEST_LOG) console.log("WARN", ...a); }, info() {}, debug() {}, error(...a) { if (process.env.WAHA_TEST_LOG) console.log("ERROR", ...a); } },
     approvals: { request: async (a) => { approvals.push(a); return opts.approval ?? "approved"; } },
     routes: { get: (p, h) => (routes["GET " + p] = h), post: (p, h) => (routes["POST " + p] = h), put: (p, h) => (routes["PUT " + p] = h), delete: (p, h) => (routes["DELETE " + p] = h) },
     internalRoutes: { call: (p, h) => (internal[p] = h) },

@@ -29,6 +29,17 @@ A full WhatsApp client inside Floq, with its own light and dark palette (scoped 
 - **History:** WAHA's own chat list and message history fill the inbox, so chats do not have to wait for a webhook.
 - **Engines:** WEBJS, NOWEB and GOWS differ; what an engine cannot do is hidden (see `shared/features.ts`, `docs/waha-api.md`).
 
+### Several accounts (3.1)
+One inbox, many WhatsApp accounts: each account is a WAHA session attached to Floq.
+
+- **Account menu** (the avatar in the chat-list header): every account with its name, number, connection state and unread chats; click one to switch. The avatar carries the unread count of the other accounts.
+- **Add account:** "Link a new WhatsApp" creates a WAHA session and shows its QR code (or a pairing code); "Attach an existing session" lists the sessions of your WAHA that are not in Floq yet and attaches one in a click. Several sessions need a WAHA that runs more than one (WAHA Core runs a single session); WAHA's own error is shown when it refuses.
+- **Per account:** restart, stop, webhook events, screenshot, rename, "Make default for the AI", log out, and "Remove from Floq" (detaches the account; the phone stays linked and the session keeps running; its stored chats are kept unless you tick the box).
+- **Data:** every row carries its session (migration `006_accounts`) and every key is per session, so the same contact, message id or lid can exist in two accounts. Rows stored by 3.0.x move to the session that install was using the first time 3.1 runs.
+- **Routes:** every route takes `session` (query or body); without it the first account (the primary one) answers. `GET /accounts`, `GET /accounts/available`, `POST /accounts/attach | create | update | remove`. Events carry `session`.
+- **Webhook:** one hook URL serves every session; the event's `session` picks the account, and events of sessions that are not attached are dropped. A session Floq creates or attaches gets the same webhook another attached session has (URL, events, and the `WAHA_WEBHOOK_HMAC` key when saved). With no session to copy it from (webhooks set in WAHA's environment apply to every session anyway) nothing is changed.
+- The "First session" setting only names the first account on a fresh install or an update from 3.0.
+
 ### WAHA webhook events
 Point one WAHA webhook at the plugin's hook URL (Settings > Plugins > WhatsApp) and enable: `message.any`, `message.ack`, `message.ack.group`, `message.reaction`, `message.edited`, `message.revoked`, `session.status`, `presence.update`, `poll.vote`, `chat.archive`, `call.received`, `call.accepted`, `call.rejected`, `label.upsert`, `label.deleted`, `label.chat.added`, `label.chat.deleted`, `group.v2.join`, `group.v2.leave`, `group.v2.update`, `group.v2.participants`. With only `message` enabled the inbox still works; ticks and edits then update when a chat is opened (history sync).
 
@@ -38,9 +49,9 @@ Point one WAHA webhook at the plugin's hook URL (Settings > Plugins > WhatsApp) 
 
 ### Checks
 - `npm test`: parsers, every route and the SQL on an in-memory Postgres (PGlite), including a fixture built from a real inbox (ids only).
-- UI in a real browser: Floq's `e2e/waha-full.spec.ts` and `e2e/waha-composer.spec.ts` mount the built package the way an installed plugin loads (`WAHA_PLUGIN_DIR=<this checkout> e2e/run-local.sh e2e/waha-full.spec.ts`).
+- UI in a real browser: Floq's `e2e/waha-full.spec.ts`, `e2e/waha-accounts.spec.ts` and `e2e/waha-composer.spec.ts` mount the built package the way an installed plugin loads (`WAHA_PLUGIN_DIR=<this checkout> e2e/run-local.sh e2e/waha-full.spec.ts`).
 
 ## What the AI can do
-- Read the inbox (chats, messages, search, what a media message is: never the file itself).
+- Read the inbox (chats, messages, search, what a media message is: never the file itself), of any attached account (`session`; `me` lists them).
 - **message-me / send-media-me:** text or a file to your own saved number, no approval (setting "Let the AI message me freely", on once a number is saved; 30 per minute loop guard).
 - **send / send-media / react:** to other chats; each one needs your approval in Floq unless "Always allow AI to send messages" is on. Your own chat never asks.

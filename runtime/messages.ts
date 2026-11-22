@@ -37,33 +37,34 @@ export function createStore(core: Core, identity: Identity): Store {
   const { ctx } = core;
   const q = (sql: string, params: unknown[]) => ctx.db.query(sql, params);
   const CID = `COALESCE(lm.pn, m.chat_id)`;
-  const MSGS = `SELECT m.*, ${CID} AS cid FROM {{p}}messages m LEFT JOIN {{p}}lid_map lm ON lm.user_id = m.user_id AND lm.lid = m.chat_id WHERE m.user_id = $1`;
-  let chatsSyncedAt = 0;
+  const MSGS = `SELECT m.*, ${CID} AS cid FROM {{p}}messages m LEFT JOIN {{p}}lid_map lm ON lm.user_id = m.user_id AND lm.session = m.session AND lm.lid = m.chat_id WHERE m.user_id = $1 AND m.session = $S`;
+  // Per account (the "user id" every function gets is the account's scope).
+  const chatsSyncedAt = new Map<string, number>();
   const chatSynced = new Map<string, number>();
   const caching = new Set<string>();
 
   async function putBlob(userId: string, key: string, mime: string, bytes: Uint8Array) {
-    await q(`INSERT INTO {{p}}media_blobs (user_id, key, mime, bytes, size) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (user_id, key) DO UPDATE SET mime = EXCLUDED.mime, bytes = EXCLUDED.bytes, size = EXCLUDED.size, created_at = now()`, [userId, key, mime, Buffer.from(bytes), bytes.length]);
+    await q(`INSERT INTO {{p}}media_blobs (user_id, session, key, mime, bytes, size) VALUES ($1,$S,$2,$3,$4,$5) ON CONFLICT (user_id, session, key) DO UPDATE SET mime = EXCLUDED.mime, bytes = EXCLUDED.bytes, size = EXCLUDED.size, created_at = now()`, [userId, key, mime, Buffer.from(bytes), bytes.length]);
     // Keep the total bounded: drop the oldest message media.
-    const total = Number((await q(`SELECT COALESCE(SUM(size),0)::bigint AS n FROM {{p}}media_blobs WHERE user_id = $1 AND key LIKE 'm:%'`, [userId])).rows[0]?.n ?? 0);
+    const total = Number((await q(`SELECT COALESCE(SUM(size),0)::bigint AS n FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key LIKE 'm:%'`, [userId])).rows[0]?.n ?? 0);
     if (total > MEDIA_TOTAL_BYTES) {
-      await q(`DELETE FROM {{p}}media_blobs WHERE user_id = $1 AND key IN (SELECT key FROM {{p}}media_blobs WHERE user_id = $1 AND key LIKE 'm:%' ORDER BY created_at ASC LIMIT 20)`, [userId]);
+      await q(`DELETE FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key IN (SELECT key FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key LIKE 'm:%' ORDER BY created_at ASC LIMIT 20)`, [userId]);
     }
   }
 
   /** Downloads a message's file while WAHA still has it (WAHA deletes downloaded files after a few minutes). Background, never throws. */
   function cacheMedia(userId: string, stanza: string, media: MediaMeta | null) {
-    if (!media?.url || media.error || !stanza || caching.has(stanza)) return;
+    if (!media?.url || media.error || !stanza || caching.has(userId + stanza)) return;
     if (media.size && media.size > MEDIA_MAX_BYTES) return;
-    caching.add(stanza);
+    caching.add(userId + stanza);
     core.bg((async () => {
       try {
-        const has = await q(`SELECT 1 AS x FROM {{p}}media_blobs WHERE user_id = $1 AND key = $2`, [userId, "m:" + stanza]);
+        const has = await q(`SELECT 1 AS x FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key = $2`, [userId, "m:" + stanza]);
         if (has.rows.length) return;
         const f = await core.wahaBytes(userId, media.url!);
         if (f.bytes.length && f.bytes.length <= MEDIA_MAX_BYTES) await putBlob(userId, "m:" + stanza, media.mime || f.mime, f.bytes);
       } catch { /* shown as "not available" until WAHA can serve it again */ }
-      finally { caching.delete(stanza); }
+      finally { caching.delete(userId + stanza); }
     })());
   }
 
@@ -79,7 +80,7 @@ export function createStore(core: Core, identity: Identity): Store {
       }
       // The same message can arrive under the contact's lid and under its phone id: that proves both are one chat.
       if (m.stanza && isUser(m.chatId)) {
-        const twin = (await q(`SELECT chat_id, msg_id FROM {{p}}messages WHERE user_id = $1 AND stanza = $2 AND msg_id <> $3 AND from_me = $4 LIMIT 1`, [userId, m.stanza, m.msgId, m.fromMe])).rows[0];
+        const twin = (await q(`SELECT chat_id, msg_id FROM {{p}}messages WHERE user_id = $1 AND session = $S AND stanza = $2 AND msg_id <> $3 AND from_me = $4 LIMIT 1`, [userId, m.stanza, m.msgId, m.fromMe])).rows[0];
         if (twin && isUser(String(twin.chat_id)) && String(twin.chat_id) !== m.chatId) {
           const a = String(twin.chat_id), lid = lidOf(a) ?? lidOf(m.chatId), pn = pnOf(a) ?? pnOf(m.chatId);
           if (lid && pn) await identity.link(userId, lid, pn);
@@ -90,7 +91,7 @@ export function createStore(core: Core, identity: Identity): Store {
       if (m.fromMe) {
         const ids = await identity.aliases(userId, m.chatId);
         const ghost = (await q(
-          `SELECT id FROM {{p}}messages WHERE user_id = $1 AND chat_id = ANY($2::text[]) AND from_me AND msg_id LIKE 'out-%' AND body = $3 AND type = $4
+          `SELECT id FROM {{p}}messages WHERE user_id = $1 AND session = $S AND chat_id = ANY($2::text[]) AND from_me AND msg_id LIKE 'out-%' AND body = $3 AND type = $4
              AND sent_at > $5::timestamptz - interval '3 minutes' AND sent_at < $5::timestamptz + interval '3 minutes'
              AND NOT EXISTS (SELECT 1 FROM {{p}}messages x WHERE x.session = $6 AND x.msg_id = $7) ORDER BY sent_at DESC LIMIT 1`,
           [userId, ids, m.body, m.type, m.sentAt.toISOString(), m.session, m.msgId])).rows[0];
@@ -125,19 +126,19 @@ export function createStore(core: Core, identity: Identity): Store {
       const meChat = me?.id ? await identity.canonical(userId, me.id) : "";
       const r = await q(
         `WITH msgs AS (${MSGS}),
-         vis AS (SELECT u.* FROM msgs u LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.chat_id = u.cid WHERE st.cleared_at IS NULL OR u.sent_at > st.cleared_at),
+         vis AS (SELECT u.* FROM msgs u LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.session = $S AND st.chat_id = u.cid WHERE st.cleared_at IS NULL OR u.sent_at > st.cleared_at),
          agg AS (SELECT cid, MAX(sent_at) AS last_at, COUNT(*)::int AS total FROM vis GROUP BY cid)
          SELECT a.cid AS chat_id, a.last_at, a.total, l.body AS last_body, l.from_me AS last_from_me, l.has_media AS last_has_media, l.type AS last_type, l.ack AS last_ack, l.deleted_at AS last_deleted,
-                COALESCE(NULLIF(l.sender_name, ''), (SELECT COALESCE(NULLIF(k2.name, ''), k2.push_name) FROM {{p}}contacts k2 WHERE k2.user_id = $1 AND k2.chat_id = l.sender LIMIT 1), '') AS last_sender_name, c.name AS name, c.push_name AS push_name, c.phone AS phone, c.has_picture AS has_picture, c.picture_at AS picture_at, c.blocked AS blocked,
+                COALESCE(NULLIF(l.sender_name, ''), (SELECT COALESCE(NULLIF(k2.name, ''), k2.push_name) FROM {{p}}contacts k2 WHERE k2.user_id = $1 AND k2.session = $S AND k2.chat_id = l.sender LIMIT 1), '') AS last_sender_name, c.name AS name, c.push_name AS push_name, c.phone AS phone, c.has_picture AS has_picture, c.picture_at AS picture_at, c.blocked AS blocked,
                 COALESCE(st.archived, FALSE) AS archived, COALESCE(st.pinned, FALSE) AS pinned, st.muted_until AS muted_until, COALESCE(st.marked_unread, FALSE) AS marked_unread, COALESCE(st.labels, '[]'::jsonb) AS labels,
-                (SELECT COUNT(*)::int FROM vis u LEFT JOIN {{p}}chat_reads r ON r.user_id = $1 AND r.chat_id = u.chat_id
+                (SELECT COUNT(*)::int FROM vis u LEFT JOIN {{p}}chat_reads r ON r.user_id = $1 AND r.session = $S AND r.chat_id = u.chat_id
                   WHERE u.cid = a.cid AND u.from_me = FALSE AND (r.read_at IS NULL OR u.created_at > r.read_at)) AS unread
            FROM agg a
-           LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.chat_id = a.cid
+           LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.session = $S AND st.chat_id = a.cid
            LEFT JOIN LATERAL (SELECT body, from_me, has_media, type, ack, deleted_at, sender_name, sender FROM vis WHERE cid = a.cid ORDER BY sent_at DESC, id DESC LIMIT 1) l ON TRUE
            LEFT JOIN LATERAL (
              SELECT MAX(NULLIF(k.name, '')) AS name, MAX(NULLIF(k.push_name, '')) AS push_name, MAX(NULLIF(k.phone, '')) AS phone, BOOL_OR(k.has_picture) AS has_picture, MAX(k.picture_at) AS picture_at, BOOL_OR(k.blocked) AS blocked
-               FROM {{p}}contacts k WHERE k.user_id = $1 AND (k.chat_id = a.cid OR k.chat_id IN (SELECT lid FROM {{p}}lid_map WHERE user_id = $1 AND pn = a.cid))) c ON TRUE
+               FROM {{p}}contacts k WHERE k.user_id = $1 AND k.session = $S AND (k.chat_id = a.cid OR k.chat_id IN (SELECT lid FROM {{p}}lid_map WHERE user_id = $1 AND session = $S AND pn = a.cid))) c ON TRUE
           WHERE (COALESCE(st.hidden, FALSE) = FALSE OR st.cleared_at IS NOT NULL) -- people-wiring: a message newer than cleared_at (only those are in agg) brings a deleted chat back
           ORDER BY COALESCE(st.pinned, FALSE) DESC, a.last_at DESC LIMIT 300`, [userId]);
       const all = r.rows.map((x) => {
@@ -166,17 +167,17 @@ export function createStore(core: Core, identity: Identity): Store {
       const r = await q(
         `SELECT t.*, COALESCE(sm.pn, t.sender) AS sender_c, COALESCE(rm.pn, t.reply_sender) AS reply_sender_c,
                 COALESCE(NULLIF(sc.name, ''), NULLIF(t.sender_name, ''), NULLIF(sc.push_name, ''), '') AS sender_label,
-                (SELECT COALESCE(jsonb_agg(jsonb_build_object('emoji', x.emoji, 'sender', COALESCE(xm.pn, x.sender)) ORDER BY x.at), '[]'::jsonb) FROM {{p}}reactions x LEFT JOIN {{p}}lid_map xm ON xm.user_id = $1 AND xm.lid = x.sender WHERE x.user_id = $1 AND x.stanza = t.stanza AND t.stanza <> '') AS reactions,
-                (SELECT COALESCE(jsonb_agg(jsonb_build_object('voter', v.voter, 'options', v.options)), '[]'::jsonb) FROM {{p}}poll_votes v WHERE v.user_id = $1 AND v.stanza = t.stanza AND t.type = 'poll') AS votes,
-                EXISTS (SELECT 1 FROM {{p}}media_blobs b WHERE b.user_id = $1 AND b.key = 'm:' || t.stanza) AS cached
+                (SELECT COALESCE(jsonb_agg(jsonb_build_object('emoji', x.emoji, 'sender', COALESCE(xm.pn, x.sender)) ORDER BY x.at), '[]'::jsonb) FROM {{p}}reactions x LEFT JOIN {{p}}lid_map xm ON xm.user_id = $1 AND xm.session = $S AND xm.lid = x.sender WHERE x.user_id = $1 AND x.session = $S AND x.stanza = t.stanza AND t.stanza <> '') AS reactions,
+                (SELECT COALESCE(jsonb_agg(jsonb_build_object('voter', v.voter, 'options', v.options)), '[]'::jsonb) FROM {{p}}poll_votes v WHERE v.user_id = $1 AND v.session = $S AND v.stanza = t.stanza AND t.type = 'poll') AS votes,
+                EXISTS (SELECT 1 FROM {{p}}media_blobs b WHERE b.user_id = $1 AND b.session = $S AND b.key = 'm:' || t.stanza) AS cached
            FROM (
-           SELECT m.* FROM {{p}}messages m LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.chat_id = $5
-            WHERE m.user_id = $1 AND m.chat_id = ANY($2::text[]) AND (st.cleared_at IS NULL OR m.sent_at > st.cleared_at)
+           SELECT m.* FROM {{p}}messages m LEFT JOIN {{p}}chat_state st ON st.user_id = $1 AND st.session = $S AND st.chat_id = $5
+            WHERE m.user_id = $1 AND m.session = $S AND m.chat_id = ANY($2::text[]) AND (st.cleared_at IS NULL OR m.sent_at > st.cleared_at)
               AND ($4::timestamptz IS NULL OR m.sent_at < $4::timestamptz) AND ($6::text IS NULL OR m.body ILIKE $6)
             ORDER BY m.sent_at DESC, m.id DESC LIMIT $3) t
-           LEFT JOIN {{p}}lid_map sm ON sm.user_id = $1 AND sm.lid = t.sender
-           LEFT JOIN {{p}}lid_map rm ON rm.user_id = $1 AND rm.lid = t.reply_sender
-           LEFT JOIN {{p}}contacts sc ON sc.user_id = $1 AND sc.chat_id = COALESCE(sm.pn, t.sender)
+           LEFT JOIN {{p}}lid_map sm ON sm.user_id = $1 AND sm.session = $S AND sm.lid = t.sender
+           LEFT JOIN {{p}}lid_map rm ON rm.user_id = $1 AND rm.session = $S AND rm.lid = t.reply_sender
+           LEFT JOIN {{p}}contacts sc ON sc.user_id = $1 AND sc.session = $S AND sc.chat_id = COALESCE(sm.pn, t.sender)
           ORDER BY t.sent_at ASC, t.id ASC`, [userId, ids, n + 1, before, ids[0], search]);
       const more = r.rows.length > n;
       const page = more ? r.rows.slice(1) : r.rows;
@@ -201,14 +202,14 @@ export function createStore(core: Core, identity: Identity): Store {
     async markRead(userId, chatId) {
       const ids = await identity.aliases(userId, chatId);
       for (const id of ids) {
-        await q(`INSERT INTO {{p}}chat_reads (user_id, chat_id, read_at) VALUES ($1,$2,now()) ON CONFLICT (user_id, chat_id) DO UPDATE SET read_at = now()`, [userId, id]);
+        await q(`INSERT INTO {{p}}chat_reads (user_id, session, chat_id, read_at) VALUES ($1,$S,$2,now()) ON CONFLICT (user_id, session, chat_id) DO UPDATE SET read_at = now()`, [userId, id]);
       }
-      await q(`UPDATE {{p}}chat_state SET marked_unread = FALSE WHERE user_id = $1 AND chat_id = $2 AND marked_unread`, [userId, ids[0]]);
+      await q(`UPDATE {{p}}chat_state SET marked_unread = FALSE WHERE user_id = $1 AND session = $S AND chat_id = $2 AND marked_unread`, [userId, ids[0]]);
     },
 
     async row(userId, msgId) {
       if (typeof msgId !== "string" || !msgId || msgId.length > 200) throw ctx.httpError(400, "invalid_message", "messageId is invalid");
-      const x = (await q(`SELECT * FROM {{p}}messages WHERE user_id = $1 AND msg_id = $2 LIMIT 1`, [userId, msgId])).rows[0];
+      const x = (await q(`SELECT * FROM {{p}}messages WHERE user_id = $1 AND session = $S AND msg_id = $2 LIMIT 1`, [userId, msgId])).rows[0];
       if (!x) throw ctx.httpError(404, "unknown_message", "That message is not in the inbox.");
       return x;
     },
@@ -217,9 +218,9 @@ export function createStore(core: Core, identity: Identity): Store {
       const every = await identity.aliases(userId, chatId);
       if (every.length < 2) return every;
       // The other spelling of a number is only a way to find the chat, never an address to write to, unless WAHA itself reported it.
-      const real = new Set((await q(`SELECT id FROM {{p}}known_ids WHERE user_id = $1 AND id = ANY($2::text[])`, [userId, every])).rows.map((x) => String(x.id)));
+      const real = new Set((await q(`SELECT id FROM {{p}}known_ids WHERE user_id = $1 AND session = $S AND id = ANY($2::text[])`, [userId, every])).rows.map((x) => String(x.id)));
       const ids = every.filter((id, i) => i === 0 || !pnOf(id) || real.has(id));
-      const last = (await q(`SELECT chat_id FROM {{p}}messages WHERE user_id = $1 AND chat_id = ANY($2::text[]) AND from_me = FALSE ORDER BY sent_at DESC LIMIT 1`, [userId, ids])).rows[0]?.chat_id;
+      const last = (await q(`SELECT chat_id FROM {{p}}messages WHERE user_id = $1 AND session = $S AND chat_id = ANY($2::text[]) AND from_me = FALSE ORDER BY sent_at DESC LIMIT 1`, [userId, ids])).rows[0]?.chat_id;
       const kv = await ctx.kv.get(userId, `route:${ids[0]}`);
       const first = typeof last === "string" && ids.includes(last) ? last : typeof kv === "string" && ids.includes(kv) ? kv : ids[0];
       return [first, ...ids.filter((i) => i !== first)];
@@ -230,7 +231,7 @@ export function createStore(core: Core, identity: Identity): Store {
       const media = rec(x.media) as unknown as MediaMeta, stanza = String(x.stanza ?? "");
       if (!x.media) throw ctx.httpError(404, "no_media", "That message has no file.");
       const filename = String(media.filename ?? "");
-      const hit = (await q(`SELECT mime, bytes FROM {{p}}media_blobs WHERE user_id = $1 AND key = $2`, [userId, "m:" + stanza])).rows[0];
+      const hit = (await q(`SELECT mime, bytes FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key = $2`, [userId, "m:" + stanza])).rows[0];
       if (hit) return { mime: String(hit.mime || media.mime || "application/octet-stream"), filename, bytes: hit.bytes as Uint8Array };
       const tryUrl = async (url: unknown) => {
         if (typeof url !== "string" || !url) return null;
@@ -250,8 +251,8 @@ export function createStore(core: Core, identity: Identity): Store {
 
     async syncChats(userId, force = false) {
       const now = Date.now();
-      if (!force && now - chatsSyncedAt < CHATS_SYNC_EVERY_MS) return false;
-      chatsSyncedAt = now;
+      if (!force && now - (chatsSyncedAt.get(userId) ?? 0) < CHATS_SYNC_EVERY_MS) return false;
+      chatsSyncedAt.set(userId, now);
       try {
         const c = await core.config(userId);
         if (!c.base || !c.apiKey) return false;
@@ -271,7 +272,7 @@ export function createStore(core: Core, identity: Identity): Store {
             if (m && (m.chatId === id || isGroup(id) === isGroup(m.chatId))) { if ((await store.save(userId, { ...m, chatId: isGroup(id) ? id : m.chatId })) === "new") changed = true; }
           }
           if (typeof o.picture === "string" && o.picture && pictures < 12) {
-            const k = (await q(`SELECT picture_at FROM {{p}}contacts WHERE user_id = $1 AND chat_id = $2`, [userId, id])).rows[0];
+            const k = (await q(`SELECT picture_at FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND chat_id = $2`, [userId, id])).rows[0];
             if (!k?.picture_at || now - new Date(k.picture_at as string).getTime() > 24 * 3600_000) { pictures++; if (await identity.saveAvatar(userId, id, o.picture)) changed = true; }
           }
           const st = rec(o._chat);
@@ -283,15 +284,15 @@ export function createStore(core: Core, identity: Identity): Store {
 
     async syncChat(userId, chatId, force = false) {
       const now = Date.now();
-      if (!force && now - (chatSynced.get(chatId) ?? 0) < CHAT_SYNC_EVERY_MS) return false;
-      chatSynced.set(chatId, now);
+      if (!force && now - (chatSynced.get(userId + chatId) ?? 0) < CHAT_SYNC_EVERY_MS) return false;
+      chatSynced.set(userId + chatId, now);
       if (chatSynced.size > 500) chatSynced.clear();
       try {
         const c = await core.config(userId);
         if (!c.base || !c.apiKey) return false;
         const me = await identity.me(userId);
         let changed = false;
-        const acks = async () => JSON.stringify((await q(`SELECT SUM(ack)::int AS a, COUNT(*)::int AS n FROM {{p}}messages WHERE user_id = $1 AND chat_id = ANY($2::text[])`, [userId, await identity.aliases(userId, chatId)])).rows[0]);
+        const acks = async () => JSON.stringify((await q(`SELECT SUM(ack)::int AS a, COUNT(*)::int AS n FROM {{p}}messages WHERE user_id = $1 AND session = $S AND chat_id = ANY($2::text[])`, [userId, await identity.aliases(userId, chatId)])).rows[0]);
         const was = await acks();
         for (const target of await store.route(userId, chatId)) {
           const list = await core.tryWaha<unknown[]>(userId, "GET", `/api/{session}/chats/${encodeURIComponent(target)}/messages`, { query: { limit: 40, downloadMedia: false } });
@@ -314,8 +315,8 @@ export function createStore(core: Core, identity: Identity): Store {
       if (!cols.length) return;
       const vals = cols.map((k) => (k === "labels" ? JSON.stringify(patch[k]) : patch[k]));
       await q(
-        `INSERT INTO {{p}}chat_state (user_id, chat_id, ${cols.join(", ")}) VALUES ($1,$2,${cols.map((k, i) => `$${i + 3}${k === "labels" ? "::jsonb" : ""}`).join(", ")})
-         ON CONFLICT (user_id, chat_id) DO UPDATE SET ${cols.map((k) => `${k} = EXCLUDED.${k}`).join(", ")}, updated_at = now()`, [userId, chatId, ...vals]);
+        `INSERT INTO {{p}}chat_state (user_id, session, chat_id, ${cols.join(", ")}) VALUES ($1,$S,$2,${cols.map((k, i) => `$${i + 3}${k === "labels" ? "::jsonb" : ""}`).join(", ")})
+         ON CONFLICT (user_id, session, chat_id) DO UPDATE SET ${cols.map((k) => `${k} = EXCLUDED.${k}`).join(", ")}, updated_at = now()`, [userId, chatId, ...vals]);
     },
   };
 
@@ -352,11 +353,11 @@ export function createStore(core: Core, identity: Identity): Store {
   async function react(userId: string, stanza: string, sender: string, emoji: string, at: Date) {
     if (!stanza) return;
     const who = sender === "me" ? "me" : await identity.canonical(userId, sender);
-    if (!emoji) await q(`DELETE FROM {{p}}reactions WHERE user_id = $1 AND stanza = $2 AND sender = $3`, [userId, stanza, who]);
-    else await q(`INSERT INTO {{p}}reactions (user_id, stanza, sender, emoji, at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (user_id, stanza, sender) DO UPDATE SET emoji = EXCLUDED.emoji, at = EXCLUDED.at`, [userId, stanza, who, emoji.slice(0, 16), at.toISOString()]);
+    if (!emoji) await q(`DELETE FROM {{p}}reactions WHERE user_id = $1 AND session = $S AND stanza = $2 AND sender = $3`, [userId, stanza, who]);
+    else await q(`INSERT INTO {{p}}reactions (user_id, session, stanza, sender, emoji, at) VALUES ($1,$S,$2,$3,$4,$5) ON CONFLICT (user_id, session, stanza, sender) DO UPDATE SET emoji = EXCLUDED.emoji, at = EXCLUDED.at`, [userId, stanza, who, emoji.slice(0, 16), at.toISOString()]);
   }
   const chatOfStanza = async (userId: string, stanza: string) => {
-    const x = (await q(`SELECT chat_id FROM {{p}}messages WHERE user_id = $1 AND stanza = $2 LIMIT 1`, [userId, stanza])).rows[0];
+    const x = (await q(`SELECT chat_id FROM {{p}}messages WHERE user_id = $1 AND session = $S AND stanza = $2 LIMIT 1`, [userId, stanza])).rows[0];
     return x ? identity.canonical(userId, String(x.chat_id)) : null;
   };
   const touched = async (userId: string, stanza: string, what: string) => { const chatId = await chatOfStanza(userId, stanza); if (chatId) core.publish(userId, "message", { chatId, [what]: true }); };
@@ -372,12 +373,12 @@ export function createStore(core: Core, identity: Identity): Store {
     if (m.fromMe) { core.publish(userId, "message", { chatId, fromMe: true }); return; }
     if (m.type === "system") return;
     core.publish(userId, "message", { chatId, fromMe: false, preview: m.body.slice(0, 120) });
-    const st = (await q(`SELECT muted_until, archived FROM {{p}}chat_state WHERE user_id = $1 AND chat_id = $2`, [userId, chatId])).rows[0];
+    const st = (await q(`SELECT muted_until, archived FROM {{p}}chat_state WHERE user_id = $1 AND session = $S AND chat_id = $2`, [userId, chatId])).rows[0];
     if (st?.muted_until && new Date(st.muted_until as string).getTime() > Date.now()) return;
     let who = m.senderName || (m.senderPhone ? formatPhone(displayDigits(m.senderPhone)) : "");
     if (!who || isGroup(chatId)) {
       // A saved name beats the push name; in a group the sender is named, with the group after it.
-      const known = async (id: string) => { const k = (await q(`SELECT name, push_name FROM {{p}}contacts WHERE user_id = $1 AND chat_id = ANY($2::text[]) ORDER BY (name <> '') DESC LIMIT 1`, [userId, await identity.aliases(userId, id)])).rows[0]; return String(k?.name || k?.push_name || ""); };
+      const known = async (id: string) => { const k = (await q(`SELECT name, push_name FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND chat_id = ANY($2::text[]) ORDER BY (name <> '') DESC LIMIT 1`, [userId, await identity.aliases(userId, id)])).rows[0]; return String(k?.name || k?.push_name || ""); };
       who = who || (await known(isGroup(chatId) ? m.sender : chatId));
       if (isGroup(chatId)) { const g = await known(chatId); if (g) who = who ? `${who} in ${g}` : g; }
     }
@@ -387,7 +388,7 @@ export function createStore(core: Core, identity: Identity): Store {
     const p = e.payload, stanza = stanzaOf(p.id);
     const ack = Number.isFinite(Number(p.ack)) ? Math.trunc(Number(p.ack)) : ACK_NAMES[String(p.ackName ?? "").toUpperCase()];
     if (!stanza || ack === undefined) return;
-    const r = await q(`UPDATE {{p}}messages SET ack = CASE WHEN $3 < 0 THEN $3 ELSE GREATEST(ack, $3) END WHERE user_id = $1 AND stanza = $2 AND from_me AND ack <> $3 RETURNING id`, [userId, stanza, Math.max(-1, Math.min(4, ack))]);
+    const r = await q(`UPDATE {{p}}messages SET ack = CASE WHEN $3 < 0 THEN $3 ELSE GREATEST(ack, $3) END WHERE user_id = $1 AND session = $S AND stanza = $2 AND from_me AND ack <> $3 RETURNING id`, [userId, stanza, Math.max(-1, Math.min(4, ack))]);
     if (r.rows.length) await touched(userId, stanza, "ack");
   });
   core.on("message.reaction", async (userId, e) => {
@@ -400,13 +401,13 @@ export function createStore(core: Core, identity: Identity): Store {
   core.on("message.edited", async (userId, e) => {
     const p = e.payload, stanza = stanzaOf(p.editedMessageId ?? rec(p._data).editedMessageId ?? p.id);
     if (!stanza || typeof p.body !== "string") return;
-    const r = await q(`UPDATE {{p}}messages SET body = $3, edited_at = now() WHERE user_id = $1 AND stanza = $2 RETURNING id`, [userId, stanza, p.body.slice(0, 8000)]);
+    const r = await q(`UPDATE {{p}}messages SET body = $3, edited_at = now() WHERE user_id = $1 AND session = $S AND stanza = $2 RETURNING id`, [userId, stanza, p.body.slice(0, 8000)]);
     if (r.rows.length) await touched(userId, stanza, "edited");
   });
   core.on("message.revoked", async (userId, e) => {
     const p = e.payload, stanza = stanzaOf(p.revokedMessageId ?? rec(p.before).id ?? rec(p.after).id);
     if (!stanza) return;
-    const r = await q(`UPDATE {{p}}messages SET deleted_at = now() WHERE user_id = $1 AND stanza = $2 AND deleted_at IS NULL RETURNING id`, [userId, stanza]);
+    const r = await q(`UPDATE {{p}}messages SET deleted_at = now() WHERE user_id = $1 AND session = $S AND stanza = $2 AND deleted_at IS NULL RETURNING id`, [userId, stanza]);
     if (r.rows.length) await touched(userId, stanza, "deleted");
   });
   core.on("poll.vote", async (userId, e) => {
@@ -414,7 +415,7 @@ export function createStore(core: Core, identity: Identity): Store {
     if (!stanza) return;
     const voter = vote.fromMe === true ? "me" : await identity.canonical(userId, normId(vote.participant) || normId(vote.from));
     const options = (Array.isArray(vote.selectedOptions) ? vote.selectedOptions : []).filter((o): o is string => typeof o === "string").slice(0, 12);
-    await q(`INSERT INTO {{p}}poll_votes (user_id, stanza, voter, options) VALUES ($1,$2,$3,$4::jsonb) ON CONFLICT (user_id, stanza, voter) DO UPDATE SET options = EXCLUDED.options, at = now()`, [userId, stanza, voter, JSON.stringify(options)]);
+    await q(`INSERT INTO {{p}}poll_votes (user_id, session, stanza, voter, options) VALUES ($1,$S,$2,$3,$4::jsonb) ON CONFLICT (user_id, session, stanza, voter) DO UPDATE SET options = EXCLUDED.options, at = now()`, [userId, stanza, voter, JSON.stringify(options)]);
     await touched(userId, stanza, "poll");
   });
   core.on("chat.archive", async (userId, e) => {

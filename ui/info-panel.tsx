@@ -1,9 +1,9 @@
 // Contact info / group info beside the conversation (a third column when the inbox is wide, an overlay otherwise).
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Switch, Textarea, toast, usePluginEvent } from "@/plugins/kit";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Switch, Textarea, toast } from "@/plugins/kit";
 import { displayName, matchesQuery, subtitle, type Chat } from "../shared/chat";
 import { formatPhoneDisplay } from "../shared/phone";
-import { errorText, useWa } from "./context";
+import { errorText, useWa, useWaEvent } from "./context";
 import { AddParticipantsDialog, ConfirmDialog, InviteLinkDialog, Pic, isGroupChat, phoneText } from "./group-dialogs";
 import { IconSearch, IconX, Spinner } from "./icons";
 import { IconBlock, IconChevronRight, IconDots, IconEdit, IconExit, IconLink, IconMerge, IconMessage, IconPhoto, IconShield, IconUserPlus } from "./icons-people";
@@ -58,7 +58,7 @@ function ContactBody({ chat }: { chat: Chat }) {
     api<ContactInfo>(`/contact?chatId=${encodeURIComponent(chat.chatId)}`).then(setInfo).catch((e) => setError(errorText(e)));
   }, [api, chat.chatId]);
   useEffect(load, [load]);
-  usePluginEvent<{ chatId?: string }>(pluginId, "chats", () => load());
+  useWaEvent<{ chatId?: string }>("chats", () => load());
 
   if (!info) return <Loading error={error} retry={load} />;
   const merged = { ...chat, name: info.name || info.pushName || chat.name, phone: info.phone ?? chat.phone, avatar: info.avatar ?? chat.avatar };
@@ -194,7 +194,7 @@ function GroupBody({ chat }: { chat: Chat }) {
     api<GroupInfo>(`/group?chatId=${encodeURIComponent(chat.chatId)}${fresh ? "&fresh=1" : ""}`).then(setInfo).catch((e) => setError(errorText(e)));
   }, [api, chat.chatId]);
   useEffect(() => load(), [load]);
-  usePluginEvent<{ chatId?: string }>(pluginId, "group", (d) => { if (!d?.chatId || d.chatId === chat.chatId) load(true); });
+  useWaEvent<{ chatId?: string }>("group", (d) => { if (!d?.chatId || d.chatId === chat.chatId) load(true); });
 
   const shown = useMemo(() => (info?.participants ?? []).filter((p) => find === null || !find.trim() || matchesQuery({ chatId: p.id, kind: "user", name: p.name, phone: p.phone }, find)), [info, find]);
   if (!info) return <Loading error={error} retry={() => load(true)} />;

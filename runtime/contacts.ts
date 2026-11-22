@@ -40,8 +40,8 @@ export function registerContacts({ core, identity, store }: Deps): void {
 
   async function merged(userId: string): Promise<Entry[]> {
     const [rem, selfIds] = [await remote(userId), await identity.selfIds(userId)];
-    const canon = new Map((await q(`SELECT lid, pn FROM {{p}}lid_map WHERE user_id = $1`, [userId])).rows.map((r) => [String(r.lid), String(r.pn)]));
-    const local = (await q(`SELECT chat_id, name, push_name, phone, has_picture, picture_at FROM {{p}}contacts WHERE user_id = $1 AND (chat_id LIKE '%@c.us' OR chat_id LIKE '%@lid')`, [userId])).rows;
+    const canon = new Map((await q(`SELECT lid, pn FROM {{p}}lid_map WHERE user_id = $1 AND session = $S`, [userId])).rows.map((r) => [String(r.lid), String(r.pn)]));
+    const local = (await q(`SELECT chat_id, name, push_name, phone, has_picture, picture_at FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND (chat_id LIKE '%@c.us' OR chat_id LIKE '%@lid')`, [userId])).rows;
     const out = new Map<string, Entry & { saved: string; push: string }>();
     const slot = (id: string) => {
       const chatId = canon.get(id) ?? id;
@@ -98,7 +98,7 @@ export function registerContacts({ core, identity, store }: Deps): void {
     return { canonical: await identity.canonical(userId, chatId), to: (await store.route(userId, chatId))[0] };
   }
   const avatarOf = async (userId: string, ids: string[]) => {
-    const r = (await q(`SELECT has_picture, picture_at FROM {{p}}contacts WHERE user_id = $1 AND chat_id = ANY($2::text[])`, [userId, ids])).rows;
+    const r = (await q(`SELECT has_picture, picture_at FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND chat_id = ANY($2::text[])`, [userId, ids])).rows;
     return Math.max(0, ...r.filter((x) => x.has_picture === true && x.picture_at).map((x) => ms(x.picture_at)!)) || null;
   };
 
@@ -108,15 +108,15 @@ export function registerContacts({ core, identity, store }: Deps): void {
     // Fills in the name, picture and flags when they are stale (rate limited per contact; never throws).
     await identity.enrich(userId, [canonical]);
     const engine = await core.engine(userId);
-    if ((engine === "WEBJS" || engine === "") && Date.now() - (aboutAt.get(canonical) ?? 0) > ABOUT_TTL_MS) {
-      aboutAt.set(canonical, Date.now());
+    if ((engine === "WEBJS" || engine === "") && Date.now() - (aboutAt.get(userId + canonical) ?? 0) > ABOUT_TTL_MS) {
+      aboutAt.set(userId + canonical, Date.now());
       const a = core.obj(await core.tryWaha(userId, "GET", "/api/contacts/about", { query: { contactId: to } }));
       if (typeof a.about === "string" && a.about.trim()) await identity.upsertContact(userId, canonical, { about: a.about });
     }
     const ids = await identity.aliases(userId, canonical);
     const r = (await q(
       `SELECT MAX(NULLIF(name, '')) AS name, MAX(NULLIF(push_name, '')) AS push_name, MAX(NULLIF(phone, '')) AS phone, MAX(NULLIF(about, '')) AS about, BOOL_OR(blocked) AS blocked, BOOL_OR(is_business) AS business
-         FROM {{p}}contacts WHERE user_id = $1 AND chat_id = ANY($2::text[])`, [userId, ids])).rows[0] ?? {};
+         FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND chat_id = ANY($2::text[])`, [userId, ids])).rows[0] ?? {};
     const digits = digitsOf(canonical) ?? (typeof r.phone === "string" && /^\d{8,15}$/.test(r.phone) ? r.phone : null);
     return {
       chatId: canonical, name: typeof r.name === "string" ? r.name : "", pushName: typeof r.push_name === "string" ? r.push_name : "", phone: digits ? displayDigits(digits) : null,

@@ -52,7 +52,7 @@ export function registerLabels({ core, identity, store }: Deps): void {
   const labelId = (v: unknown) => { const id = typeof v === "string" || typeof v === "number" ? String(v) : ""; if (!LABEL_ID.test(id)) throw ctx.httpError(400, "invalid_label", "label id is invalid"); return id; };
   const labelColor = (v: unknown) => { if (typeof v !== "string" || !HEX.test(v)) throw ctx.httpError(400, "invalid_color", "color must be a hex colour like #64c4ff"); return colorIndex(v); };
   const chatLabels = async (userId: string, chatId: string): Promise<string[]> => {
-    const r = await q(`SELECT labels FROM {{p}}chat_state WHERE user_id = $1 AND chat_id = $2`, [userId, chatId]);
+    const r = await q(`SELECT labels FROM {{p}}chat_state WHERE user_id = $1 AND session = $S AND chat_id = $2`, [userId, chatId]);
     return Array.isArray(r.rows[0]?.labels) ? (r.rows[0].labels as unknown[]).map(String) : [];
   };
 
@@ -106,7 +106,7 @@ export function registerLabels({ core, identity, store }: Deps): void {
 
   async function dropLabel(userId: string, id: string) {
     await q(`UPDATE {{p}}chat_state SET labels = COALESCE((SELECT jsonb_agg(x) FROM jsonb_array_elements(labels) x WHERE x <> to_jsonb($2::text)), '[]'::jsonb), updated_at = now()
-               WHERE user_id = $1 AND labels @> jsonb_build_array($2::text)`, [userId, id]);
+               WHERE user_id = $1 AND session = $S AND labels @> jsonb_build_array($2::text)`, [userId, id]);
   }
 
   core.on("label.upsert", (userId, e) => {

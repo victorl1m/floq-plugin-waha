@@ -31,12 +31,14 @@ export default definePlugin({
   migrations,
   /** Waits for background work (history sync, media downloads) to finish. */
   async stop() { await running?.idle(); },
-  start(ctx: PluginContext) {
-    const core = createCore(ctx);
+  start(host: PluginContext) {
+    const core = createCore(host);
+    // Scoped: a "user id" in here is an account's scope (owner + session), which the routes below get from the `session` they were called with.
+    const ctx = core.ctx;
     running = core;
     /** Saved from the settings panel's formatted phone field (kv), else the older text setting. */
     async function savedPhone(userId: string): Promise<unknown> {
-      const v = await ctx.kv.get(userId, "phone");
+      const v = await host.kv.get(core.split(userId).owner, "phone"); // one number for the whole inbox, not per account
       return typeof v === "string" && v ? v : (await ctx.settings.get(userId)).assistantPhone;
     }
     const identity = createIdentity(core, savedPhone);
@@ -52,8 +54,8 @@ export default definePlugin({
       const c = await core.config(userId);
       const configured = !c.missingSettings.length && !c.missingSecrets.length;
       const me = await identity.me(userId);
-      const engine = configured ? await core.engine(userId) : "";
-      return { configured, missingSettings: c.missingSettings, missingSecrets: c.missingSecrets, session: c.session, engine, features: featuresOf(engine), me: me ? { name: me.name, phone: displayDigits(me.id.split("@")[0]) } : null };
+      const engine = configured && c.session ? await core.engine(userId) : "";
+      return { accounts: (await core.accounts(core.split(userId).owner)).length, configured, missingSettings: c.missingSettings, missingSecrets: c.missingSecrets, session: c.session, engine, features: featuresOf(engine), me: me ? { name: me.name, phone: displayDigits(me.id.split("@")[0]) } : null };
     });
 
     ctx.routes.get("/phone", async ({ userId }) => {
@@ -64,10 +66,10 @@ export default definePlugin({
     ctx.routes.post("/phone", async ({ userId, body }) => {
       await owner(userId);
       const raw = asObject(body).phone;
-      if (raw === "" || raw === null) { await ctx.kv.set(userId, "phone", ""); return { phone: null, formatted: null }; }
+      if (raw === "" || raw === null) { await host.kv.set(core.split(userId).owner, "phone", ""); return { phone: null, formatted: null }; }
       const digits = phoneDigits(raw);
       if (!digits) throw ctx.httpError(400, "invalid_phone", "Pick the country and type the number, for example (11) 99999-9999.");
-      await ctx.kv.set(userId, "phone", `+${digits}`);
+      await host.kv.set(core.split(userId).owner, "phone", `+${digits}`);
       // The saved number is "you": find its real WhatsApp address and its lid now.
       await identity.seen(userId, `${digits}@c.us`, false);
       core.bg(identity.ensure(userId, true));
@@ -126,6 +128,16 @@ export default definePlugin({
       if (meSent.length >= ME_SEND_PER_MIN) throw ctx.httpError(429, "rate_limited", `More than ${ME_SEND_PER_MIN} messages in a minute to the user's number; this limit only guards against loops. Wait a minute.`);
       meSent.push(now);
     }
+    /** " from <account>" for an approval question, when there is more than one account to send from. */
+    const from = (userId: string) => { const tag = core.accountTag(userId); return tag ? ` from ${tag}` : ""; };
+    /** The attached accounts as agents see them: the session to pass as `session`, who it is, and which one is used when none is named. */
+    async function accountList(userId: string) {
+      const { owner } = core.split(userId);
+      return Promise.all((await core.accounts(owner)).map(async (a, i) => {
+        const me = await identity.me(await core.scope(owner, a.session));
+        return { session: a.session, label: a.label || null, name: me?.name || a.name || null, phone: me ? me.id.split("@")[0] : a.phone || null, primary: i === 0 };
+      }));
+    }
     async function meChat(userId: string) {
       const s = await ctx.settings.get(userId);
       const chatId = await ownChat(userId);
@@ -140,7 +152,7 @@ export default definePlugin({
       await owner(userId);
       const b = asObject(body);
       const chatId = core.chatId(b.chatId), text = core.text(b.text), replyTo = b.replyTo;
-      const decision = await approved(userId, `Send WhatsApp message to ${chatId}`, text, signal);
+      const decision = await approved(userId, `Send WhatsApp message to ${chatId}${from(userId)}`, text, signal);
       if (decision !== "approved") return { status: decision };
       return inbox.sendText(userId, chatId, text, replyTo);
     });
@@ -166,7 +178,7 @@ export default definePlugin({
       await owner(userId);
       const b = asObject(body), chatId = core.chatId(b.chatId);
       if (!(await isSelf(userId, chatId))) {
-        const decision = await approved(userId, `Send a file on WhatsApp to ${chatId}`, `${core.optText(b.filename, 150) || b.kind}${b.caption ? ": " + core.optText(b.caption, 600) : ""}`, signal);
+        const decision = await approved(userId, `Send a file on WhatsApp to ${chatId}${from(userId)}`, `${core.optText(b.filename, 150) || b.kind}${b.caption ? ": " + core.optText(b.caption, 600) : ""}`, signal);
         if (decision !== "approved") return { status: decision };
       }
       return inbox.sendMedia(userId, chatId, b);
@@ -176,7 +188,7 @@ export default definePlugin({
       await owner(userId);
       const b = asObject(body), x = await store.row(userId, b.messageId), emoji = core.optText(b.emoji, 16);
       if (!(await isSelf(userId, String(x.chat_id)))) {
-        const decision = await approved(userId, `React ${emoji || "(remove reaction)"} to a WhatsApp message in ${await identity.canonical(userId, String(x.chat_id))}`, String(x.body ?? "").slice(0, 300), signal);
+        const decision = await approved(userId, `React ${emoji || "(remove reaction)"} to a WhatsApp message in ${await identity.canonical(userId, String(x.chat_id))}${from(userId)}`, String(x.body ?? "").slice(0, 300), signal);
         if (decision !== "approved") return { status: decision };
       }
       await inbox.react(userId, b.messageId, emoji);
@@ -209,7 +221,7 @@ export default definePlugin({
       const lidOfOwn = working && own ? await probe("/api/{session}/lids/pn/" + encodeURIComponent(own), {}) : null;
       const overview = working ? await probe("/api/{session}/chats/overview", { limit: "1" }) : null;
       return {
-        configured: true, session: c.session, basePathPrefix: new URL(c.base).pathname.replace(/\/+$/, "") !== "",
+        configured: true, session: c.session, accounts: await accountList(userId), basePathPrefix: new URL(c.base).pathname.replace(/\/+$/, "") !== "",
         version: { status: version.status, detail: (version as { detail?: string }).detail, version: o(version.data).version ?? null, engine: o(version.data).engine ?? null, tier: o(version.data).tier ?? null },
         sessionRead: { status: one.status, detail: (one as { detail?: string }).detail, sessionStatus: s.status ?? null, engine: o(s.engine).engine ?? null, hasMe: !!s.me, meKeys: keys(s.me), webhooks: hooks },
         sessions: { status: all.status, detail: (all as { detail?: string }).detail, list: Array.isArray(all.data) ? all.data.slice(0, 30).map((x) => ({ name: o(x).name ?? null, status: o(x).status ?? null, hasMe: !!o(x).me })) : null },
@@ -224,16 +236,19 @@ export default definePlugin({
     A.call("/me", async ({ userId }) => {
       await owner(userId);
       const s = await ctx.settings.get(userId), me = await identity.me(userId);
-      return { canMessageMe: phoneToChatId(await savedPhone(userId)) !== null && messageMeOn(s), sendNeedsApproval: s.alwaysAllowSend !== true, account: me ? { name: me.name, phone: me.id.split("@")[0] } : null };
+      return { canMessageMe: phoneToChatId(await savedPhone(userId)) !== null && messageMeOn(s), sendNeedsApproval: s.alwaysAllowSend !== true, account: me ? { name: me.name, phone: me.id.split("@")[0] } : null,
+        session: core.split(userId).session || null, accounts: await accountList(userId) };
     });
 
     // ---- inbound: WAHA posts events here (token in the path, optional HMAC) ----
     ctx.webhooks.on("events", async (req) => {
       const e = parseEnvelope(req.json());
       if (!e) return { ok: true };
-      const o = await ctx.installOwner();
-      if (!o) return { ok: true, ignored: true };
-      if (e.session !== (await core.config(o)).session) return { ok: true, ignored: true };
+      const owner = await ctx.installOwner();
+      if (!owner) return { ok: true, ignored: true };
+      // One hook URL serves every session; the event says which account it is about. Sessions that are not attached are not stored.
+      if (!(await core.accounts(owner)).some((a) => a.session === e.session)) return { ok: true, ignored: true };
+      const o = await core.scope(owner, e.session);
       if (Object.keys(e.me).length) await identity.saveMe(o, e.me);
       await core.emit(o, e);
       return { ok: true };

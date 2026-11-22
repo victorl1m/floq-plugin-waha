@@ -32,7 +32,7 @@ export function createInbox(core: Core, identity: Identity, store: Store): Inbox
   async function quoted(userId: string, ids: string[], replyTo: unknown): Promise<{ msgId: string; ref: ReplyRef } | null> {
     if (replyTo === undefined || replyTo === null || replyTo === "") return null;
     if (typeof replyTo !== "string" || replyTo.length > 200) throw ctx.httpError(400, "invalid_reply", "replyTo is not a message of this chat");
-    const r = await q(`SELECT msg_id, from_me, sender, body, has_media FROM {{p}}messages WHERE user_id = $1 AND chat_id = ANY($2::text[]) AND msg_id = $3 LIMIT 1`, [userId, ids, replyTo]);
+    const r = await q(`SELECT msg_id, from_me, sender, body, has_media FROM {{p}}messages WHERE user_id = $1 AND session = $S AND chat_id = ANY($2::text[]) AND msg_id = $3 LIMIT 1`, [userId, ids, replyTo]);
     const x = r.rows.find((row) => row.msg_id === replyTo);
     if (!x) throw ctx.httpError(400, "invalid_reply", "replyTo is not a message of this chat");
     // A message WAHA gave no id for cannot be quoted on WhatsApp.
@@ -100,8 +100,8 @@ export function createInbox(core: Core, identity: Identity, store: Store): Inbox
       if (String(x.msg_id).startsWith("out-")) throw ctx.httpError(400, "invalid_message", "This message cannot be reacted to yet.");
       await core.guard(() => core.waha(userId, "PUT", "/api/reaction", { body: { messageId: x.msg_id, reaction: e } }), "reaction");
       const stanza = String(x.stanza);
-      if (!e) await q(`DELETE FROM {{p}}reactions WHERE user_id = $1 AND stanza = $2 AND sender = 'me'`, [userId, stanza]);
-      else await q(`INSERT INTO {{p}}reactions (user_id, stanza, sender, emoji) VALUES ($1,$2,'me',$3) ON CONFLICT (user_id, stanza, sender) DO UPDATE SET emoji = EXCLUDED.emoji, at = now()`, [userId, stanza, e]);
+      if (!e) await q(`DELETE FROM {{p}}reactions WHERE user_id = $1 AND session = $S AND stanza = $2 AND sender = 'me'`, [userId, stanza]);
+      else await q(`INSERT INTO {{p}}reactions (user_id, session, stanza, sender, emoji) VALUES ($1,$S,$2,'me',$3) ON CONFLICT (user_id, session, stanza, sender) DO UPDATE SET emoji = EXCLUDED.emoji, at = now()`, [userId, stanza, e]);
       return { ok: true };
     },
   };
@@ -114,7 +114,7 @@ export function createInbox(core: Core, identity: Identity, store: Store): Inbox
 
   R.get("/chats", async ({ userId, query }) => {
     await core.owner(userId);
-    const first = (await q(`SELECT 1 AS x FROM {{p}}messages WHERE user_id = $1 LIMIT 1`, [userId])).rows.length === 0;
+    const first = (await q(`SELECT 1 AS x FROM {{p}}messages WHERE user_id = $1 AND session = $S LIMIT 1`, [userId])).rows.length === 0;
     await identity.ensure(userId);
     // WAHA's own chat list fills the inbox with chats that never produced a webhook; awaited only when there is nothing to show yet.
     const sync = store.syncChats(userId).then(async (ch) => { if (ch && !first) core.publish(userId, "chats", {}); });
@@ -166,7 +166,7 @@ export function createInbox(core: Core, identity: Identity, store: Store): Inbox
     const o = b(body), { x } = await msg(userId, o.messageId);
     const votes = (Array.isArray(o.options) ? o.options : []).filter((v): v is string => typeof v === "string").slice(0, 12);
     await core.guard(() => core.waha(userId, "POST", "/api/sendPollVote", { body: { chatId: x.chat_id, pollMessageId: x.msg_id, votes } }), "poll vote");
-    await q(`INSERT INTO {{p}}poll_votes (user_id, stanza, voter, options) VALUES ($1,$2,'me',$3::jsonb) ON CONFLICT (user_id, stanza, voter) DO UPDATE SET options = EXCLUDED.options, at = now()`, [userId, x.stanza, JSON.stringify(votes)]);
+    await q(`INSERT INTO {{p}}poll_votes (user_id, session, stanza, voter, options) VALUES ($1,$S,$2,'me',$3::jsonb) ON CONFLICT (user_id, session, stanza, voter) DO UPDATE SET options = EXCLUDED.options, at = now()`, [userId, x.stanza, JSON.stringify(votes)]);
     await changed(userId, x.chat_id);
     return { ok: true };
   });
@@ -230,7 +230,7 @@ export function createInbox(core: Core, identity: Identity, store: Store): Inbox
     const live = core.obj(await core.tryWaha(userId, "GET", path));
     const ack = Number.isFinite(Number(live.ack)) ? Math.max(Number(x.ack) || 0, Math.trunc(Number(live.ack))) : Number(x.ack) || 0;
     if (ack !== Number(x.ack)) await q(`UPDATE {{p}}messages SET ack = $2 WHERE id = $1`, [x.id, Math.min(4, ack)]);
-    const reactions = (await q(`SELECT r.emoji, COALESCE(lm.pn, r.sender) AS sender, r.at, COALESCE(NULLIF(c.name,''), c.push_name, '') AS name FROM {{p}}reactions r LEFT JOIN {{p}}lid_map lm ON lm.user_id = $1 AND lm.lid = r.sender LEFT JOIN {{p}}contacts c ON c.user_id = $1 AND c.chat_id = COALESCE(lm.pn, r.sender) WHERE r.user_id = $1 AND r.stanza = $2 ORDER BY r.at`, [userId, x.stanza])).rows;
+    const reactions = (await q(`SELECT r.emoji, COALESCE(lm.pn, r.sender) AS sender, r.at, COALESCE(NULLIF(c.name,''), c.push_name, '') AS name FROM {{p}}reactions r LEFT JOIN {{p}}lid_map lm ON lm.user_id = $1 AND lm.session = $S AND lm.lid = r.sender LEFT JOIN {{p}}contacts c ON c.user_id = $1 AND c.session = $S AND c.chat_id = COALESCE(lm.pn, r.sender) WHERE r.user_id = $1 AND r.session = $S AND r.stanza = $2 ORDER BY r.at`, [userId, x.stanza])).rows;
     return { id: x.msg_id, fromMe: x.from_me === true, sentAt: new Date(x.sent_at as string).toISOString(), ack: Math.min(4, ack), edited: Boolean(x.edited_at), starred: x.starred === true, pinned: x.pinned === true, type: x.type,
       reactions: reactions.map((r) => ({ emoji: r.emoji, fromMe: r.sender === "me", name: String(r.name ?? ""), phone: digitsOf(String(r.sender)), at: new Date(r.at as string).toISOString() })) };
   });

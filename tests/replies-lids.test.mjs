@@ -238,7 +238,7 @@ test("sending to a merged chat goes where the contact last wrote from, and falls
   refuse = LID;
   await h.routes["POST /send"]({ userId: "u1", body: { chatId: LID, text: "second" } });
   assert.deepEqual(h.sent.slice(1).map((s) => s.chatId), [LID, PN]);
-  assert.equal(h.kv.get("route:" + PN), PN);
+  assert.equal(h.kv.get("s:default:route:" + PN), PN);
   // A new message from the phone id moves the route back there.
   refuse = "";
   await h.hook({ from: PN, body: "c" });
@@ -326,7 +326,7 @@ test("an agent reply still waits for approval and passes reply_to", async () => 
 });
 
 test("migrations: 003 is appended and additive", () => {
-  assert.deepEqual(migrations.map((m) => m.id), ["001_messages", "002_contacts_reads", "003_replies_lids", "004_full_inbox", "005_status"]);
+  assert.deepEqual(migrations.map((m) => m.id), ["001_messages", "002_contacts_reads", "003_replies_lids", "004_full_inbox", "005_status", "006_accounts"]);
   const sql = migrations[2].sql;
   assert.doesNotMatch(sql, /DROP|DELETE|UPDATE /i);
   for (const s of ["reply_to", "reply_body", "reply_sender", "{{p}}lid_map"]) assert.ok(sql.includes(s), s);

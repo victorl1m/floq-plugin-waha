@@ -1,7 +1,7 @@
 // The plugin has no palette of its own: every colour is one of Floq's theme tokens, so the view follows the theme (light, dark), the material
 // (acrylic, mica, vibrancy, solid, with or without the native window material) and the accent the user picked in Settings, live.
 // The --wa-* names are the plugin's internal aliases. The second value of each var() is only used where the host stylesheet is absent.
-// Dialogs and menus are portalled to <body>, outside .wa-root, so their wrappers (.wa-dlg, .wa-portal, .wa-bdlg) get the same aliases.
+// Dialogs and menus are portalled to <body>, outside .wa-root, so their wrappers (.wa-dlg, .wa-portal, .wa-bdlg, .wa-adlg, .wa-amenu) get the same aliases.
 const vars = (dark: boolean) => {
   const v = (light: string, dk: string) => (dark ? dk : light);
   return [
@@ -26,9 +26,9 @@ const vars = (dark: boolean) => {
 };
 
 export const THEME_CSS = `
-.wa-root,.wa-dlg,.wa-portal,.wa-bdlg{${vars(false)}}
-.dark :is(.wa-root,.wa-dlg,.wa-portal,.wa-bdlg){${vars(true)}}
-.wa-dlg,.wa-portal,.wa-bdlg{--wa-panel:var(--popover,var(--wa-solid));--wa-bar:var(--wa-muted)}
+.wa-root,.wa-dlg,.wa-portal,.wa-bdlg,.wa-adlg,.wa-amenu{${vars(false)}}
+.dark :is(.wa-root,.wa-dlg,.wa-portal,.wa-bdlg,.wa-adlg,.wa-amenu){${vars(true)}}
+.wa-dlg,.wa-portal,.wa-bdlg,.wa-adlg,.wa-amenu{--wa-panel:var(--popover,var(--wa-solid));--wa-bar:var(--wa-muted)}
 /* surfaces. Acrylic by default: translucent card over the workspace, like Floq's panes. The chat pane is the agent canvas. */
 .wa-root{--wa-panel:color-mix(in oklab,var(--wa-solid) 76%,transparent);--wa-bar:color-mix(in oklab,var(--wa-muted) 62%,transparent);--wa-pop:color-mix(in oklab,var(--popover,var(--wa-solid)) 78%,transparent);
   --wa-blur:blur(24px) saturate(1.5);--wa-pop-blur:blur(14px) saturate(1.4);--wa-wall:var(--canvas-bg,var(--wa-wall-d));--wa-wall-dot:color-mix(in oklab,var(--canvas-dot,var(--wa-dot-d)) var(--wa-dot-a),transparent)}

@@ -81,7 +81,7 @@ test("GET /session: WORKING, engine, account, webhook events that are missing", 
   assert.deepEqual(r.webhook.events, ["message.any", "session.status"]);
   assert.deepEqual(r.webhook.missingEvents, session.WANTED_EVENTS.filter((e) => e !== "message.any" && e !== "session.status"));
   assert.equal(find(h, "GET", "/api/sessions/default").length, 1);
-  assert.deepEqual((await h.kv.get("me")).id, "5511987654321@c.us");
+  assert.deepEqual((await h.kv.get("s:default:me")).id, "5511987654321@c.us");
   assert.ok(!JSON.stringify(r).includes("hook.example") && !JSON.stringify(r).includes("secret"), "webhook url and hmac never leave the runtime");
 });
 
@@ -158,7 +158,7 @@ test("GET /session: a WAHA without GET /api/sessions/{name} is read from the lis
 test("POST /session/stop, restart, logout hit the right endpoint; stop is announced", async () => {
   const h = await harness(async () => ok({}));
   for (const a of ["stop", "restart", "logout"]) { assert.deepEqual(await h.call("POST /session/" + a), { ok: true }); assert.equal(find(h, "POST", `/api/sessions/default/${a}`).length, 1, a); }
-  assert.deepEqual(h.events, [{ name: "session", status: "STOPPED" }]);
+  assert.deepEqual(h.events, [{ name: "session", status: "STOPPED", session: "default" }]);
 });
 
 test("GET /session/qr: raw value; 422 is 409 not_scanning; image fallback when raw is not available", async () => {
@@ -211,7 +211,7 @@ test("POST /session/webhook-events: PUTs the same config with only that entry's 
   const want = FULL(have).config;
   want.webhooks[0].events = [...have, ...r.added];
   assert.deepEqual(put[0].body, { config: want });
-  assert.deepEqual(h.events, [{ name: "session", status: "STARTING" }]);
+  assert.deepEqual(h.events, [{ name: "session", status: "STARTING", session: "default" }]);
 });
 
 test("POST /session/webhook-events: nothing to add sends nothing; no webhook entry is 409 no_webhook", async () => {
@@ -236,9 +236,9 @@ test("WAHA 501 is 501 unsupported; WAHA down is 502; a 422 is session_not_ready"
 test("webhook session.status is pushed to the UI; WORKING refreshes the account in the background", async () => {
   const h = await harness(async (r) => (r.path === "/api/sessions/default" ? ok({ status: "WORKING", me: ME }) : ok({})));
   await h.hook("session.status", { name: "default", status: "SCAN_QR_CODE" });
-  assert.deepEqual(h.events, [{ name: "session", status: "SCAN_QR_CODE" }]);
+  assert.deepEqual(h.events, [{ name: "session", status: "SCAN_QR_CODE", session: "default" }]);
   await h.hook("session.status", { name: "default", status: "WORKING" }, { me: ME });
-  assert.deepEqual(h.events.at(-1), { name: "session", status: "WORKING" });
+  assert.deepEqual(h.events.at(-1), { name: "session", status: "WORKING", session: "default" });
   await plugin.stop();
   assert.ok(find(h, "GET", "/api/sessions/default").length >= 1, "identity.ensure asked WAHA about the account");
   await h.hook("session.status", { name: "default" });

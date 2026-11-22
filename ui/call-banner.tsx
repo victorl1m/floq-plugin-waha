@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, toast, usePluginEvent } from "@/plugins/kit";
+import { Button, toast } from "@/plugins/kit";
 import { displayName } from "../shared/chat";
 import { Avatar } from "./avatar";
-import { errorCode, useWa } from "./context";
+import { errorCode, useWa, useWaEvent } from "./context";
 import { IconPhone, IconPhoneDown, IconVideoCall } from "./icons-more";
 
 interface CallEvent { id?: string; chatId?: string; name?: string; video?: boolean; status?: "ringing" | "accepted" | "declined" | "missed" | "rejected" }
@@ -19,7 +19,7 @@ export function CallBanner() {
   const clear = useCallback(() => { if (timer.current) clearTimeout(timer.current); timer.current = null; setCall(null); setBusy(false); }, []);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
-  usePluginEvent<CallEvent>(pluginId, "call", (e) => {
+  useWaEvent<CallEvent>("call", (e) => {
     if (!e?.id || !e.chatId) return;
     if (e.status === "ringing") {
       if (timer.current) clearTimeout(timer.current);

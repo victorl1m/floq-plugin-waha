@@ -1,6 +1,12 @@
 import type { PluginMigration } from "../shared/sdk";
 
 /** Applied ids never change; append new migrations. `{{p}}` is the table prefix in fallback mode and empty in schema mode (`plugin_waha`). */
+/** Tables that became per account in 006, with the columns that identify a row inside one account. */
+const PER_ACCOUNT: Array<[table: string, key: string]> = [
+  ["contacts", "chat_id"], ["chat_reads", "chat_id"], ["lid_map", "lid"], ["reactions", "stanza, sender"], ["poll_votes", "stanza, voter"],
+  ["media_blobs", "key"], ["known_ids", "id"], ["chat_state", "chat_id"], ["calls", "call_id"], ["statuses", "stanza"],
+];
+
 export const migrations: PluginMigration[] = [
   {
     id: "001_messages",
@@ -126,6 +132,23 @@ export const migrations: PluginMigration[] = [
         PRIMARY KEY (user_id, stanza)
       );
       CREATE INDEX {{p}}statuses_at_idx ON {{p}}statuses (user_id, sent_at DESC);
+    `,
+  },
+  {
+    // 3.1.0: several WhatsApp accounts (WAHA sessions) in one inbox. Every row belongs to a session and every key is per session.
+    // Existing rows get "default"; the runtime renames that to the session the install was using the first time it runs (core.ts, adopt).
+    // The primary key's name depends on the table prefix, so it is looked up instead of spelled out.
+    id: "006_accounts",
+    sql: PER_ACCOUNT.map(([t, key]) => `
+      ALTER TABLE {{p}}${t} ADD COLUMN session TEXT NOT NULL DEFAULT 'default';
+      DO $waha$ DECLARE c text; BEGIN
+        SELECT conname INTO c FROM pg_constraint WHERE conrelid = '{{p}}${t}'::regclass AND contype = 'p';
+        IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE {{p}}${t} DROP CONSTRAINT %I', c); END IF;
+      END $waha$;
+      ALTER TABLE {{p}}${t} ADD PRIMARY KEY (user_id, session, ${key});`).join("") + `
+      CREATE INDEX {{p}}lid_map_session_pn_idx ON {{p}}lid_map (user_id, session, pn);
+      CREATE INDEX {{p}}messages_session_chat_idx ON {{p}}messages (user_id, session, chat_id, sent_at DESC);
+      CREATE INDEX {{p}}messages_session_stanza_idx ON {{p}}messages (user_id, session, stanza);
     `,
   },
 ];

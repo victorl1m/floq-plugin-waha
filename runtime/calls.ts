@@ -17,12 +17,12 @@ export function registerCalls({ core, identity, store }: Deps): void {
   const label = async (userId: string, chatId: string) => (await peopleOf(core, userId, [chatId])).get(chatId)?.name ?? "";
 
   async function setStatus(userId: string, callId: string, status: CallStatus) {
-    await q(`UPDATE {{p}}calls SET status = $3 WHERE user_id = $1 AND call_id = $2 AND (status = 'received' OR $3 = 'accepted')`, [userId, callId, status === "ringing" ? "received" : status]);
+    await q(`UPDATE {{p}}calls SET status = $3 WHERE user_id = $1 AND session = $S AND call_id = $2 AND (status = 'received' OR $3 = 'accepted')`, [userId, callId, status === "ringing" ? "received" : status]);
     // The chat entry only moves forward from ringing; a finished call is not changed by a late event.
-    const r = await q(`UPDATE {{p}}messages SET extra = jsonb_set(COALESCE(extra, '{}'::jsonb), '{call,status}', to_jsonb($3::text)) WHERE user_id = $1 AND msg_id = $2 AND extra #>> '{call,status}' = 'ringing' RETURNING chat_id`, [userId, "call_" + callId, status]);
+    const r = await q(`UPDATE {{p}}messages SET extra = jsonb_set(COALESCE(extra, '{}'::jsonb), '{call,status}', to_jsonb($3::text)) WHERE user_id = $1 AND session = $S AND msg_id = $2 AND extra #>> '{call,status}' = 'ringing' RETURNING chat_id`, [userId, "call_" + callId, status]);
     return r.rows.length > 0;
   }
-  const row = async (userId: string, callId: string) => (await q(`SELECT chat_id, is_video, is_group, status FROM {{p}}calls WHERE user_id = $1 AND call_id = $2`, [userId, callId])).rows[0];
+  const row = async (userId: string, callId: string) => (await q(`SELECT chat_id, is_video, is_group, status FROM {{p}}calls WHERE user_id = $1 AND session = $S AND call_id = $2`, [userId, callId])).rows[0];
   async function announce(userId: string, callId: string, status: CallStatus) {
     const x = await row(userId, callId);
     if (!x) return;
@@ -38,7 +38,7 @@ export function registerCalls({ core, identity, store }: Deps): void {
     if (!raw) return;
     const group = p.isGroup === true || raw.endsWith("@g.us"), video = p.isVideo === true;
     const chatId = await identity.canonical(userId, raw), at = isoOf(p.timestamp) ?? new Date().toISOString();
-    const fresh = await q(`INSERT INTO {{p}}calls (user_id, call_id, chat_id, is_video, is_group, status, at) VALUES ($1,$2,$3,$4,$5,'received',$6) ON CONFLICT (user_id, call_id) DO NOTHING RETURNING call_id`, [userId, callId, chatId, video, group, at]);
+    const fresh = await q(`INSERT INTO {{p}}calls (user_id, session, call_id, chat_id, is_video, is_group, status, at) VALUES ($1,$S,$2,$3,$4,$5,'received',$6) ON CONFLICT (user_id, session, call_id) DO NOTHING RETURNING call_id`, [userId, callId, chatId, video, group, at]);
     if (!fresh.rows.length) return;
     const m: Parsed = { source: "call", session: e.session, chatId, msgId: "call_" + callId, stanza: callId, fromMe: false, sender: chatId, senderName: "", senderPhone: "", body: "", type: "call", hasMedia: false, media: null,
       extra: { call: { video, status: "ringing" } }, ack: 0, sentAt: new Date(at), reply: null, links: [] };
@@ -81,7 +81,7 @@ export function registerCalls({ core, identity, store }: Deps): void {
   R.get("/calls", async ({ userId, query }) => {
     await core.owner(userId);
     const limit = Math.min(100, Math.max(1, Number.parseInt(String(query?.limit ?? "30"), 10) || 30));
-    const rows = (await q(`SELECT call_id, chat_id, is_video, is_group, status, at FROM {{p}}calls WHERE user_id = $1 ORDER BY at DESC LIMIT $2`, [userId, limit])).rows;
+    const rows = (await q(`SELECT call_id, chat_id, is_video, is_group, status, at FROM {{p}}calls WHERE user_id = $1 AND session = $S ORDER BY at DESC LIMIT $2`, [userId, limit])).rows;
     const people = await peopleOf(core, userId, [...new Set(rows.map((x) => String(x.chat_id)))]);
     return { calls: rows.map((x) => {
       const at = new Date(x.at as string);

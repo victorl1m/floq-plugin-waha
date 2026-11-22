@@ -1,6 +1,7 @@
 // Connecting WhatsApp from inside Floq: session state, start/stop/restart/logout, QR and pairing-code login, webhook event check.
 import type { Deps } from "./extras.js";
 import { WahaError } from "./client.js";
+import { SESSION_NAME } from "./core.js";
 import { displayDigits } from "./ids.js";
 import { phoneDigits } from "../shared/phone.js";
 
@@ -9,11 +10,11 @@ export const WANTED_EVENTS = ["message.any", "message.ack", "message.ack.group",
 export const SESSION_STATUSES = ["STOPPED", "STARTING", "SCAN_QR_CODE", "WORKING", "FAILED", "PASSKEY_REQUIRED", "PASSKEY_CONFIRMATION_REQUIRED"] as const;
 
 type Obj = Record<string, unknown>;
-const webhooksOf = (s: Obj): Obj[] => {
+export const webhooksOf = (s: Obj): Obj[] => {
   const c = s.config && typeof s.config === "object" ? (s.config as Obj) : null;
   return c && Array.isArray(c.webhooks) ? c.webhooks.filter((w): w is Obj => !!w && typeof w === "object" && !Array.isArray(w)) : [];
 };
-const eventsOf = (w: Obj): string[] => (Array.isArray(w.events) ? w.events.filter((e): e is string => typeof e === "string") : []);
+export const eventsOf = (w: Obj): string[] => (Array.isArray(w.events) ? w.events.filter((e): e is string => typeof e === "string") : []);
 const missing = (events: string[]) => (events.includes("*") ? [] : WANTED_EVENTS.filter((e) => !events.includes(e)));
 /** The webhook entry that is most likely ours: the one that already covers most of the wanted events. */
 function pickWebhook(list: Obj[]): Obj | null {
@@ -21,6 +22,32 @@ function pickWebhook(list: Obj[]): Obj | null {
   for (const w of list) { const ev = eventsOf(w), n = ev.includes("*") ? WANTED_EVENTS.length : WANTED_EVENTS.filter((e) => ev.includes(e)).length; if (n > score) { best = w; score = n; } }
   return best;
 }
+
+export const statusOf = (s: Obj | null | undefined) => String(s?.status ?? "").toUpperCase().slice(0, 40) || "STOPPED";
+export const engineOf = (s: Obj | null | undefined) => { const e = String((s?.engine as Obj | undefined)?.engine ?? "").toUpperCase(); return e === "WEBJS" || e === "NOWEB" || e === "GOWS" ? e : ""; };
+/** Name and number of the WhatsApp account a WAHA session is logged in to, for display. */
+export function accountOf(s: Obj | null | undefined): { name: string; phone: string } | null {
+  const me = s?.me && typeof s.me === "object" ? (s.me as Obj) : null;
+  if (!me) return null;
+  const digits = typeof me.id === "string" ? me.id.split("@")[0].split(":")[0].replace(/\D/g, "") : "";
+  const name = [me.pushName, me.pushname, me.name].find((n): n is string => typeof n === "string" && !!n.trim()) ?? "";
+  return { name: name.replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim().slice(0, 80), phone: /^\d{8,15}$/.test(digits) ? displayDigits(digits) : "" };
+}
+/**
+ * Floq's webhook as one attached session has it, to give another session the same one: the entry whose URL is this plugin's hook, else (one
+ * session, set up by hand through a proxy) the entry that covers most of the wanted events. With WAHA_WEBHOOK_HMAC saved, that key signs it.
+ */
+export function webhookFor(pluginId: string, sessions: Obj[], hmac: string | undefined): Obj | null {
+  const ours = (w: Obj) => typeof w.url === "string" && w.url.includes(`/plugins/${pluginId}/hooks/`);
+  let found: Obj | null = null;
+  for (const x of sessions) { found = webhooksOf(x).find(ours) ?? null; if (found) break; }
+  if (!found) for (const x of sessions) { found = pickWebhook(webhooksOf(x)); if (found) break; }
+  if (!found || typeof found.url !== "string" || !/^https?:\/\//.test(found.url)) return null;
+  const events = eventsOf(found);
+  return { ...found, events: events.includes("*") ? ["*"] : [...new Set([...events, ...WANTED_EVENTS])], ...(hmac ? { hmac: { key: hmac } } : {}) };
+}
+/** True when the session already posts to the same URL as the template. */
+export const hasWebhook = (s: Obj, template: Obj) => webhooksOf(s).some((w) => w.url === template.url);
 
 export function registerSession(deps: Deps): void {
   const { core, identity } = deps;
@@ -32,13 +59,17 @@ export function registerSession(deps: Deps): void {
     const r = await core.tryWaha<unknown>(userId, "GET", "/api/sessions", { query: { all: "true" } });
     return Array.isArray(r) ? r.filter((x): x is Obj => !!x && typeof x === "object" && typeof (x as Obj).name === "string") : null;
   }
-  const NAME = /^[A-Za-z0-9._-]{1,64}$/;
-  /** Forgets what was learned about the previous session's account. */
+  const NAME = SESSION_NAME;
+  /** The account now uses another WAHA session: its place in the list stays, what was learned about the old session's account does not carry over. */
   async function switched(userId: string, name: string) {
-    await ctx.kv.set(userId, "session", name);
-    await ctx.kv.set(userId, "me", null);
+    const { owner, session } = core.split(userId), list = await core.accounts(owner);
+    if (name === session) return;
+    if (list.some((a) => a.session === name)) throw ctx.httpError(409, "already_attached", "That session is already one of your accounts.");
+    const next = { session: name, label: "", name: "", phone: "", addedAt: new Date().toISOString() };
+    await core.saveAccounts(owner, list.some((a) => a.session === session) ? list.map((a) => (a.session === session ? { ...next, label: a.label } : a)) : [...list, next]);
     core.resetEngine();
-    core.publish(userId, "session", { status: "STARTING" });
+    core.host.events.publish(owner, "accounts", {});
+    core.publish(userId, "session", { status: "STARTING", movedTo: name });
   }
 
   /** The session as WAHA reports it, or the reason it cannot. */
@@ -91,9 +122,8 @@ export function registerSession(deps: Deps): void {
     }, "webhook events");
   });
 
-  R.post("/session/start", async ({ userId }) => {
-    await core.owner(userId);
-    return core.guard(async () => {
+  /** Starts the account's session; creates it in WAHA (with Floq's webhook, when another account shows it) when it does not exist. */
+  const start = (userId: string) => core.guard(async () => {
       const c = await core.ready(userId);
       const { status } = await read(userId);
       if (status === "UNREACHABLE" || status === "UNAUTHORIZED") throw new WahaError(status === "UNAUTHORIZED" ? 401 : 0);
@@ -103,7 +133,9 @@ export function registerSession(deps: Deps): void {
       const legacy = () => post("/api/sessions/start", { name: c.session }); // WAHA before 2024.9: name in the body
       let err: WahaError | null;
       if (status === "MISSING") {
-        err = await post("/api/sessions", { name: c.session, start: true });
+        const { owner } = core.split(userId), others = new Set((await core.accounts(owner)).map((a) => a.session));
+        const hook = webhookFor(ctx.pluginId, ((await list(userId)) ?? []).filter((x) => others.has(String(x.name))), await ctx.secrets.getInstall("WAHA_WEBHOOK_HMAC"));
+        err = await post("/api/sessions", { name: c.session, start: true, ...(hook ? { config: { webhooks: [hook] } } : {}) });
         if (err && (err.status === 404 || err.status === 405)) err = (await legacy()) && err;
         else if (err && (err.status === 409 || err.status === 422 || err.status === 400)) err = (await post("/api/sessions/{session}/start")) && err; // it exists after all
       } else {
@@ -113,15 +145,16 @@ export function registerSession(deps: Deps): void {
       if (err) throw err;
       return { ok: true };
     }, "session start");
-  });
+  R.post("/session/start", async ({ userId }) => { await core.owner(userId); return start(userId); });
   // The sessions that exist in WAHA, to attach one that is already there instead of creating a new one.
   R.get("/session/list", async ({ userId }) => {
     await core.owner(userId);
     const c = await core.ready(userId), all = await list(userId);
+    const attached = new Set((await core.accounts(core.split(userId).owner)).map((a) => a.session));
     return { current: c.session, sessions: (all ?? []).slice(0, 50).map((x) => {
       const me = x.me && typeof x.me === "object" ? (x.me as Obj) : null, id = me && typeof me.id === "string" ? me.id.split("@")[0].replace(/\D/g, "") : "";
       return { name: String(x.name).slice(0, 64), status: String(x.status ?? "").toUpperCase() || "STOPPED", account: me ? { name: typeof me.pushName === "string" ? me.pushName.slice(0, 80) : "", phone: id ? displayDigits(id) : null } : null };
-    }).filter((x) => NAME.test(x.name)), known: all !== null };
+    }).filter((x) => NAME.test(x.name) && (x.name === c.session || !attached.has(x.name))), known: all !== null };
   });
   // Use a session by name: one from the list, or a new name that "Connect" then creates.
   R.post("/session/use", async ({ userId, body }) => {
@@ -130,6 +163,8 @@ export function registerSession(deps: Deps): void {
     if (!NAME.test(name)) throw ctx.httpError(400, "invalid_session", "A session name is 1-64 letters, digits, dots, dashes or underscores.");
     await core.ready(userId);
     await switched(userId, name);
+    // The caller's requests still name the old session, so "create and connect" is one call.
+    if (core.obj(body).start === true) await start(await core.scope(core.split(userId).owner, name));
     return { ok: true, session: name };
   });
 

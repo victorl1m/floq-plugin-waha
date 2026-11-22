@@ -25,7 +25,7 @@ test("call.received: a row, a ringing chat entry, a toast and a call event with 
   assert.equal(e.type, "call");
   assert.deepEqual(e.extra, { call: { video: true, status: "ringing" } });
   assert.deepEqual(h.toasts.map((t) => [t.title, t.description]), [["Incoming video call", "Marina Costa"]]);
-  assert.deepEqual(h.raw.find((x) => x.name === "call").data, { id: "CALL1", chatId: PN, name: "Marina Costa", video: true, status: "ringing" });
+  assert.deepEqual(h.raw.find((x) => x.name === "call").data, { id: "CALL1", chatId: PN, name: "Marina Costa", video: true, status: "ringing", session: "default" });
   // a repeated event changes nothing
   await h.event("call.received", call({ from: LID, isVideo: true }));
   assert.equal(h.toasts.length, 1);

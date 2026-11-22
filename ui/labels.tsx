@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useState } from "react";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Tooltip, TooltipContent, TooltipTrigger, cn, toast, usePluginEvent } from "@/plugins/kit";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Tooltip, TooltipContent, TooltipTrigger, cn, toast } from "@/plugins/kit";
 import type { Chat } from "../shared/chat";
-import { errorCode, useWa, type Api } from "./context";
+import { errorCode, useWa, useWaEvent, type Api } from "./context";
 import { IconCheck } from "./icons";
 import { IconChevronDown, Spinner } from "./icons";
 import { IconPencilSmall, IconPlusSmall, IconTag, IconTrashSmall } from "./icons-more";
@@ -39,7 +39,7 @@ export function useLabels(): { labels: Label[]; supported: boolean; loaded: bool
     if (features.labels && !s.loaded) void reload(api);
     return () => { s.subs.delete(tick); };
   }, [api, s, features.labels]);
-  usePluginEvent(pluginId, "labels", () => void reload(api));
+  useWaEvent("labels", () => void reload(api));
   const on = features.labels && s.supported;
   return { labels: on ? s.labels : [], supported: on, loaded: s.loaded, reload: () => void reload(api) };
 }

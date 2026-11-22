@@ -5,9 +5,11 @@ import {
   Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
   Tooltip, TooltipContent, TooltipTrigger, toast,
 } from "@/plugins/kit";
-import { errorCode, errorText, useWa } from "./context";
-import { IconRefresh, Spinner } from "./icons";
-import { IconAlertCircle, IconCamera, IconLogout, IconPlugOff, IconPower, IconServerOff, IconSliders, IconStop } from "./icons-session";
+import { accountName, errorCode, errorText, useWa, type Account } from "./context";
+import { AccountAvatar, RemoveAccountDialog, RenameAccountDialog, phoneLine, statusText, useAccounts } from "./accounts";
+import { IconCheck, IconRefresh, Spinner } from "./icons";
+import { IconBin, IconEdit, IconShield, IconUserPlus } from "./icons-people";
+import { IconAlertCircle, IconCamera, IconLogout, IconPlugOff, IconServerOff, IconSliders, IconStop } from "./icons-session";
 import { useSessionInfo, type SessionStatus } from "./session-screen";
 import { SESSION_CSS } from "./styles-session";
 
@@ -15,23 +17,37 @@ const STATUS_TEXT: Record<SessionStatus, string> = {
   WORKING: "Connected", STARTING: "Connecting", SCAN_QR_CODE: "Waiting for a scan", STOPPED: "Stopped", FAILED: "Connection failed", MISSING: "Not set up",
   UNREACHABLE: "WAHA not reachable", UNAUTHORIZED: "API key refused", PASSKEY_REQUIRED: "Passkey needed", PASSKEY_CONFIRMATION_REQUIRED: "Passkey needed",
 };
-const hueOf = (s: string) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
-const initialsOf = (name: string) => { const w = name.trim().split(/\s+/).filter(Boolean); return w.length ? (w[0][0] + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase() : ""; };
 const explain = (e: unknown) => (errorCode(e) === "unsupported" ? "This WAHA engine does not support that." : errorText(e));
 
 type Dialog = "logout" | "webhook" | "events" | "shot" | null;
 const mono = { fontFamily: "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace", fontSize: 12, padding: "2px 6px", borderRadius: 6, background: "color-mix(in srgb, currentColor 10%, transparent)" } as const;
 
-/** Avatar button with the connection dot and a menu: restart, stop, log out, fix webhook events, screenshot. */
+/**
+ * Avatar button with the connection dot and the account menu: every attached account (click to switch), "Add account", and the actions of the
+ * account on screen (restart, stop, webhook events, screenshot, rename, default for the AI, remove from Floq, log out).
+ */
 export function AccountMenu() {
-  const { api, features } = useWa();
-  const { info, refresh } = useSessionInfo();
+  const { api, features, session } = useWa();
+  const { info, refresh: refreshInfo } = useSessionInfo();
+  const accounts = useAccounts();
+  const [removing, setRemoving] = useState<Account | null>(null);
+  const [renaming, setRenaming] = useState<Account | null>(null);
+  const list = accounts?.list ?? [];
+  const current = list.find((a) => a.session === session) ?? null;
+  const others = list.filter((a) => a.session !== session).reduce((n, a) => n + (a.unread || 0), 0);
+  const refresh = async () => { await Promise.all([refreshInfo(), accounts?.refresh()]); };
   const [dialog, setDialog] = useState<Dialog>(null);
   const [busy, setBusy] = useState(false);
   const [shot, setShot] = useState("");
   const status: SessionStatus = info?.status ?? "STARTING";
   const me = info?.me;
-  const name = me?.name || (me?.phone ? "+" + me.phone : "WhatsApp");
+  const name = current ? accountName({ ...current, name: me?.name || current.name, phone: me?.phone ?? current.phone }) : me?.name || (me?.phone ? "+" + me.phone : "WhatsApp");
+  const shown: Account = { session: session ?? "", label: current?.label ?? "", name: me?.name || current?.name || "", phone: me?.phone ?? current?.phone ?? null, primary: current?.primary ?? true, status, engine: info?.engine ?? "", unread: 0 };
+  async function makeDefault() {
+    if (!current) return;
+    try { await api("/accounts/update", { method: "POST", body: { session: current.session, primary: true } }); toast.success(`${name} is now the default account`, { description: "The AI uses it when it is not told which account to use." }); await accounts?.refresh(); }
+    catch (e) { toast.error("Could not change the default account", { description: explain(e) }); }
+  }
   const missing = info?.webhook?.missingEvents ?? [];
   const envHooks = !!info && info.webhook === null && status === "WORKING";
 
@@ -60,36 +76,66 @@ export function AccountMenu() {
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" className="wa-acct" aria-label={`WhatsApp account: ${name}, ${STATUS_TEXT[status]}`}>
-                <span className="wa-acct-av" style={{ "--wa-h": hueOf(me?.phone ?? name) } as React.CSSProperties}>{initialsOf(me?.name ?? "") || <IconPlugOff width={18} height={18} />}</span>
+              <Button type="button" variant="ghost" size="icon" className="wa-acct" aria-label={`WhatsApp account: ${name}, ${STATUS_TEXT[status]}${others ? `. ${others} unread in other accounts` : ""}`}>
+                <AccountAvatar account={shown} className="wa-acct-av" />
                 <span className="wa-dot" data-s={status} aria-hidden="true" />
+                {others > 0 && <span className="wa-acct-n" aria-hidden="true">{others > 99 ? "99+" : others}</span>}
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
           <TooltipContent>{name} · {STATUS_TEXT[status]}</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="start" className="min-w-60">
-          <DropdownMenuLabel style={{ display: "flex", flexDirection: "column", gap: 2, fontWeight: 400 }}>
-            <span style={{ fontWeight: 600 }}>{name}</span>
-            {me?.phone && me.name && <span style={{ opacity: 0.7, fontSize: 12 }}>+{me.phone}</span>}
-            <span style={{ opacity: 0.7, fontSize: 12 }}>{STATUS_TEXT[status]}{info?.engine ? ` · ${info.engine}` : ""}</span>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
+        <DropdownMenuContent align="start" className="wa-amenu min-w-60">
+          {accounts ? (
+            <>
+              <DropdownMenuLabel className="wa-amenu-h"><span>Accounts</span></DropdownMenuLabel>
+              {list.map((a) => {
+                const on = a.session === session, live = on ? { ...a, status, name: me?.name || a.name, phone: me?.phone ?? a.phone } : a;
+                const sub = [phoneLine(live), statusText(live.status)].filter(Boolean).join(" · ");
+                return (
+                  <DropdownMenuItem key={a.session} role="menuitemradio" aria-checked={on} className="wa-arow" aria-label={`${accountName(live)}, ${sub}${a.unread && !on ? `, ${a.unread} unread` : ""}${a.primary && list.length > 1 ? ", default" : ""}`} onSelect={() => { if (!on) accounts.switchTo(a.session); }}>
+                    <AccountAvatar account={live} dot />
+                    <span className="wa-arow-main"><b>{accountName(live)}</b><span>{sub}</span></span>
+                    {!on && a.unread > 0 && <span className="wa-arow-n">{a.unread > 99 ? "99+" : a.unread}</span>}
+                    {on && <IconCheck className="wa-arow-check" />}
+                  </DropdownMenuItem>
+                );
+              })}
+              <DropdownMenuItem onSelect={() => accounts.add()}><IconUserPlus />Add account</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="wa-amenu-h"><span>{name}</span>{info?.engine ? <small>{info.engine}</small> : null}</DropdownMenuLabel>
+            </>
+          ) : (
+            <>
+              <DropdownMenuLabel style={{ display: "flex", flexDirection: "column", gap: 2, fontWeight: 400 }}>
+                <span style={{ fontWeight: 600 }}>{name}</span>
+                {me?.phone && me.name && <span style={{ opacity: 0.7, fontSize: 12 }}>+{me.phone}</span>}
+                <span style={{ opacity: 0.7, fontSize: 12 }}>{STATUS_TEXT[status]}{info?.engine ? ` · ${info.engine}` : ""}</span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem disabled={busy} onSelect={() => void act("/session/restart", "Could not restart", "Restarting WhatsApp")}><IconRefresh />Restart</DropdownMenuItem>
           {status !== "STOPPED" && status !== "MISSING" && <DropdownMenuItem disabled={busy} onSelect={() => void act("/session/stop", "Could not stop")}><IconStop />Stop</DropdownMenuItem>}
           {features.screenshot && status === "WORKING" && <DropdownMenuItem onSelect={() => void screenshot()}><IconCamera />Screenshot</DropdownMenuItem>}
           {missing.length > 0 && <DropdownMenuItem onSelect={() => setDialog("webhook")}><IconSliders />Fix webhook events</DropdownMenuItem>}
           {envHooks && <DropdownMenuItem onSelect={() => setDialog("events")}><IconSliders />Webhook events</DropdownMenuItem>}
+          {current && <DropdownMenuItem onSelect={() => setRenaming(current)}><IconEdit />Rename</DropdownMenuItem>}
+          {current && !current.primary && <DropdownMenuItem onSelect={() => void makeDefault()}><IconShield />Make default for the AI</DropdownMenuItem>}
           <DropdownMenuSeparator />
+          {current && <DropdownMenuItem onSelect={() => setRemoving(current)}><IconBin />Remove from Floq</DropdownMenuItem>}
           <DropdownMenuItem variant="destructive" onSelect={() => setDialog("logout")}><IconLogout />Log out</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
+      <RemoveAccountDialog account={removing} onOpenChange={(v) => { if (!v) setRemoving(null); }} api={api} onRemoved={() => accounts?.refresh()} />
+      <RenameAccountDialog account={renaming} onOpenChange={(v) => { if (!v) setRenaming(null); }} api={api} onDone={() => accounts?.refresh()} />
+
       <AlertDialog open={dialog === "logout"} onOpenChange={(o) => !o && !busy && setDialog(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Log out of WhatsApp?</AlertDialogTitle>
-            <AlertDialogDescription>This unlinks the phone from Floq. Your stored chats stay here, but you need to scan a new QR code to receive and send messages again.</AlertDialogDescription>
+            <AlertDialogTitle>Log out {list.length > 1 ? name : "of WhatsApp"}?</AlertDialogTitle>
+            <AlertDialogDescription>This unlinks {list.length > 1 ? "that" : "the"} phone from Floq. Your stored chats stay here, but you need to scan a new QR code to receive and send messages again.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>

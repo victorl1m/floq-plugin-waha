@@ -12,13 +12,13 @@ import { ChatSearch, ContactDialog, ForwardDialog, LocationDialog, MessageInfoDi
 const IconWhatsApp = resolvePluginIcon("IconBrandWhatsapp");
 
 /** Right pane when no chat is open (wide layouts only). */
-export function EmptyConversation({ session }: { session: string }) {
+export function EmptyConversation({ session, account }: { session: string; account?: string }) {
   return (
     <section className="wa-pane wa-chat-pane wa-center wa-empty" aria-label="Conversation">
       <div className="wa-hello">
         <span className="wa-hero"><IconWhatsApp /></span>
         <span className="wa-hero-title">WhatsApp in Floq</span>
-        <p>Pick a chat on the left to read it and reply. Replies you send here go out from your own WhatsApp number.</p>
+        <p>{account ? <>Pick a chat on the left to read it and reply. Replies you send here go out from <b>{account}</b>.</> : "Pick a chat on the left to read it and reply. Replies you send here go out from your own WhatsApp number."}</p>
         <span className="wa-small"><IconLock />{session ? `Connected through your WAHA session “${session}”` : "Connected through your own WAHA instance"}</span>
       </div>
     </section>

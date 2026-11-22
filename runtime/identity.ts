@@ -40,10 +40,11 @@ const clean = (v: unknown, max = 120) => (typeof v === "string" ? v.replace(/[\u
 export function createIdentity(core: Core, savedPhone: (userId: string) => Promise<unknown>): Identity {
   const { ctx } = core;
   const q = (sql: string, params: unknown[]) => ctx.db.query(sql, params);
-  let ensuredAt = 0, backfilled = false;
+  // Per account (the "user id" every function gets is the account's scope).
+  const ensuredAt = new Map<string, number>(), backfilled = new Set<string>();
   const lidTried = new Map<string, number>();
 
-  const known = async (userId: string, id: string) => (await q(`SELECT 1 AS x FROM {{p}}known_ids WHERE user_id = $1 AND id = $2`, [userId, id])).rows.length > 0;
+  const known = async (userId: string, id: string) => (await q(`SELECT 1 AS x FROM {{p}}known_ids WHERE user_id = $1 AND session = $S AND id = $2`, [userId, id])).rows.length > 0;
 
   const self: Identity = {
     async link(userId, alias, canonical) {
@@ -52,32 +53,32 @@ export function createIdentity(core: Core, savedPhone: (userId: string) => Promi
       // A lid is never the canonical id of a phone id.
       if (lidOf(canonical) && pnOf(alias)) [alias, canonical] = [canonical, alias];
       let c = await self.canonical(userId, canonical);
-      if (c === alias) { await q(`DELETE FROM {{p}}lid_map WHERE user_id = $1 AND lid = $2`, [userId, canonical]); c = canonical; }
-      await q(`UPDATE {{p}}lid_map SET pn = $3, updated_at = now() WHERE user_id = $1 AND pn = $2`, [userId, alias, c]);
-      await q(`INSERT INTO {{p}}lid_map (user_id, lid, pn) VALUES ($1,$2,$3) ON CONFLICT (user_id, lid) DO UPDATE SET pn = EXCLUDED.pn, updated_at = now()`, [userId, alias, c]);
+      if (c === alias) { await q(`DELETE FROM {{p}}lid_map WHERE user_id = $1 AND session = $S AND lid = $2`, [userId, canonical]); c = canonical; }
+      await q(`UPDATE {{p}}lid_map SET pn = $3, updated_at = now() WHERE user_id = $1 AND session = $S AND pn = $2`, [userId, alias, c]);
+      await q(`INSERT INTO {{p}}lid_map (user_id, session, lid, pn) VALUES ($1,$S,$2,$3) ON CONFLICT (user_id, session, lid) DO UPDATE SET pn = EXCLUDED.pn, updated_at = now()`, [userId, alias, c]);
       // Chat state lives under the canonical id.
-      await q(`UPDATE {{p}}chat_state SET chat_id = $3 WHERE user_id = $1 AND chat_id = $2 AND NOT EXISTS (SELECT 1 FROM {{p}}chat_state x WHERE x.user_id = $1 AND x.chat_id = $3)`, [userId, alias, c]).catch(() => undefined);
+      await q(`UPDATE {{p}}chat_state SET chat_id = $3 WHERE user_id = $1 AND session = $S AND chat_id = $2 AND NOT EXISTS (SELECT 1 FROM {{p}}chat_state x WHERE x.user_id = $1 AND x.session = $S AND x.chat_id = $3)`, [userId, alias, c]).catch(() => undefined);
     },
     async canonical(userId, id) {
       if (!id || isGroup(id)) return id;
-      const r = await q(`SELECT pn FROM {{p}}lid_map WHERE user_id = $1 AND lid = $2`, [userId, id]);
+      const r = await q(`SELECT pn FROM {{p}}lid_map WHERE user_id = $1 AND session = $S AND lid = $2`, [userId, id]);
       return typeof r.rows[0]?.pn === "string" ? (r.rows[0].pn as string) : id;
     },
     async aliases(userId, id) {
       if (isGroup(id)) return [id];
       const c = await self.canonical(userId, id);
-      const r = await q(`SELECT lid FROM {{p}}lid_map WHERE user_id = $1 AND pn = $2 ORDER BY updated_at DESC`, [userId, c]);
+      const r = await q(`SELECT lid FROM {{p}}lid_map WHERE user_id = $1 AND session = $S AND pn = $2 ORDER BY updated_at DESC`, [userId, c]);
       return [c, ...new Set(r.rows.map((x) => String(x.lid)).filter((x) => x !== c))];
     },
     async seen(userId, id, real) {
       const d = digitsOf(id);
       if (!d) return;
       const me = `${d}@c.us`;
-      if (real) await q(`INSERT INTO {{p}}known_ids (user_id, id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [userId, me]);
+      if (real) await q(`INSERT INTO {{p}}known_ids (user_id, session, id) VALUES ($1,$S,$2) ON CONFLICT DO NOTHING`, [userId, me]);
       const v = brVariants(d);
       if (!v) return;
       const other = `${v[0] === d ? v[1] : v[0]}@c.us`;
-      const rows = (await q(`SELECT lid, pn FROM {{p}}lid_map WHERE user_id = $1 AND lid = ANY($2::text[])`, [userId, [me, other]])).rows;
+      const rows = (await q(`SELECT lid, pn FROM {{p}}lid_map WHERE user_id = $1 AND session = $S AND lid = ANY($2::text[])`, [userId, [me, other]])).rows;
       const meIsAlias = rows.some((x) => x.lid === me), otherIsAlias = rows.some((x) => x.lid === other);
       if (real) {
         // The id WAHA reports is the one that exists; the other spelling folds into it unless WAHA reported that one too.
@@ -115,20 +116,20 @@ export function createIdentity(core: Core, savedPhone: (userId: string) => Promi
     },
     async ensure(userId, force = false) {
       const now = Date.now();
-      if (!force && now - ensuredAt < IDENTITY_EVERY_MS && backfilled) return false;
-      const before = async () => JSON.stringify((await q(`SELECT lid, pn FROM {{p}}lid_map WHERE user_id = $1 ORDER BY lid`, [userId])).rows);
+      if (!force && now - (ensuredAt.get(userId) ?? 0) < IDENTITY_EVERY_MS && backfilled.has(userId)) return false;
+      const before = async () => JSON.stringify((await q(`SELECT lid, pn FROM {{p}}lid_map WHERE user_id = $1 AND session = $S ORDER BY lid`, [userId])).rows);
       try {
         const was = await before();
-        if (!backfilled) {
+        if (!backfilled.has(userId)) {
           // Rows stored by older versions: fold the two spellings of every Brazilian mobile that already has messages or a contact row.
-          backfilled = true;
-          const ids = (await q(`SELECT DISTINCT chat_id AS id FROM {{p}}messages WHERE user_id = $1 AND chat_id LIKE '%@c.us' UNION SELECT chat_id FROM {{p}}contacts WHERE user_id = $1 AND chat_id LIKE '%@c.us'`, [userId])).rows.map((x) => String(x.id));
+          backfilled.add(userId);
+          const ids = (await q(`SELECT DISTINCT chat_id AS id FROM {{p}}messages WHERE user_id = $1 AND session = $S AND chat_id LIKE '%@c.us' UNION SELECT chat_id FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND chat_id LIKE '%@c.us'`, [userId])).rows.map((x) => String(x.id));
           for (const id of ids) await self.seen(userId, id, await known(userId, id));
           const own = await self.ownChat(userId);
           if (own) await self.seen(userId, own, false);
         }
-        if (force || now - ensuredAt >= IDENTITY_EVERY_MS) {
-          ensuredAt = now;
+        if (force || now - (ensuredAt.get(userId) ?? 0) >= IDENTITY_EVERY_MS) {
+          ensuredAt.set(userId, now);
           const c = await core.config(userId);
           if (c.base && c.apiKey) {
             // 1. The account itself.
@@ -151,14 +152,14 @@ export function createIdentity(core: Core, savedPhone: (userId: string) => Promi
             // 3. Lids: the pairs of the numbers we care about, then every unlinked lid chat.
             for (const id of numbers) await pair(userId, await core.tryWaha(userId, "GET", `/api/{session}/lids/pn/${encodeURIComponent(digitsOf(id)!)}`));
             const unlinked = (await q(
-              `SELECT DISTINCT m.chat_id AS id FROM {{p}}messages m WHERE m.user_id = $1 AND m.chat_id LIKE '%@lid'
-                 AND NOT EXISTS (SELECT 1 FROM {{p}}lid_map l WHERE l.user_id = $1 AND l.lid = m.chat_id) LIMIT 200`, [userId])).rows.map((x) => String(x.id));
+              `SELECT DISTINCT m.chat_id AS id FROM {{p}}messages m WHERE m.user_id = $1 AND m.session = $S AND m.chat_id LIKE '%@lid'
+                 AND NOT EXISTS (SELECT 1 FROM {{p}}lid_map l WHERE l.user_id = $1 AND l.session = $S AND l.lid = m.chat_id) LIMIT 200`, [userId])).rows.map((x) => String(x.id));
             if (unlinked.length) {
               const all = await core.tryWaha<unknown[]>(userId, "GET", "/api/{session}/lids", { query: { limit: 1000, offset: 0 } });
               if (Array.isArray(all)) for (const row of all) { const l = lidOf(normId(core.obj(row).lid)); if (l && unlinked.includes(l)) await pair(userId, row); }
-              const due = unlinked.filter((l) => now - (lidTried.get(l) ?? 0) > IDENTITY_EVERY_MS).slice(0, 8);
+              const due = unlinked.filter((l) => now - (lidTried.get(userId + l) ?? 0) > IDENTITY_EVERY_MS).slice(0, 8);
               for (const l of due) {
-                lidTried.set(l, now);
+                lidTried.set(userId + l, now);
                 if ((await self.canonical(userId, l)) !== l) continue;
                 if (await pair(userId, await core.tryWaha(userId, "GET", `/api/{session}/lids/${encodeURIComponent(l)}`))) continue;
                 // Some engines answer a contact lookup by lid with the phone number.
@@ -176,8 +177,8 @@ export function createIdentity(core: Core, savedPhone: (userId: string) => Promi
       const name = clean(c.name), push = clean(c.pushName), phone = /^\d{8,15}$/.test(c.phone ?? "") ? c.phone! : "", about = clean(c.about, 300);
       if (!name && !push && !phone && !about && c.blocked === undefined && c.business === undefined) return;
       await q(
-        `INSERT INTO {{p}}contacts (user_id, chat_id, name, push_name, phone, about, blocked, is_business) VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,FALSE),COALESCE($8,FALSE))
-         ON CONFLICT (user_id, chat_id) DO UPDATE SET
+        `INSERT INTO {{p}}contacts (user_id, session, chat_id, name, push_name, phone, about, blocked, is_business) VALUES ($1,$S,$2,$3,$4,$5,$6,COALESCE($7,FALSE),COALESCE($8,FALSE))
+         ON CONFLICT (user_id, session, chat_id) DO UPDATE SET
            name = CASE WHEN EXCLUDED.name <> '' THEN EXCLUDED.name ELSE {{p}}contacts.name END,
            push_name = CASE WHEN EXCLUDED.push_name <> '' THEN EXCLUDED.push_name ELSE {{p}}contacts.push_name END,
            phone = CASE WHEN EXCLUDED.phone <> '' THEN EXCLUDED.phone ELSE {{p}}contacts.phone END,
@@ -188,8 +189,8 @@ export function createIdentity(core: Core, savedPhone: (userId: string) => Promi
     async saveAvatar(userId, chatId, url) {
       const key = "avatar:" + chatId;
       const mark = (has: boolean) => q(
-        `INSERT INTO {{p}}contacts (user_id, chat_id, has_picture, picture_at) VALUES ($1,$2,$3,now())
-         ON CONFLICT (user_id, chat_id) DO UPDATE SET has_picture = $3, picture_at = now()`, [userId, chatId, has]);
+        `INSERT INTO {{p}}contacts (user_id, session, chat_id, has_picture, picture_at) VALUES ($1,$S,$2,$3,now())
+         ON CONFLICT (user_id, session, chat_id) DO UPDATE SET has_picture = $3, picture_at = now()`, [userId, chatId, has]);
       if (!url) { await mark(false); return false; }
       try {
         let bytes: Uint8Array, mime: string;
@@ -198,14 +199,14 @@ export function createIdentity(core: Core, savedPhone: (userId: string) => Promi
         else { const res = await ctx.fetch(url, { method: "GET" }); if (!res.ok) throw new Error("avatar"); bytes = res.bytes; mime = String(res.headers?.["content-type"] ?? "").split(";")[0]; }
         if (!bytes.length || bytes.length > AVATAR_MAX_BYTES) throw new Error("avatar size");
         if (!/^image\/(jpeg|png|webp|gif)$/.test(mime)) mime = "image/jpeg";
-        await q(`INSERT INTO {{p}}media_blobs (user_id, key, mime, bytes, size) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (user_id, key) DO UPDATE SET mime = EXCLUDED.mime, bytes = EXCLUDED.bytes, size = EXCLUDED.size, created_at = now()`, [userId, key, mime, Buffer.from(bytes), bytes.length]);
+        await q(`INSERT INTO {{p}}media_blobs (user_id, session, key, mime, bytes, size) VALUES ($1,$S,$2,$3,$4,$5) ON CONFLICT (user_id, session, key) DO UPDATE SET mime = EXCLUDED.mime, bytes = EXCLUDED.bytes, size = EXCLUDED.size, created_at = now()`, [userId, key, mime, Buffer.from(bytes), bytes.length]);
         await mark(true);
         return true;
       } catch { await mark(false).catch(() => undefined); return false; }
     },
     async avatar(userId, chatId) {
       const ids = await self.aliases(userId, chatId);
-      const r = await q(`SELECT mime, bytes FROM {{p}}media_blobs WHERE user_id = $1 AND key = ANY($2::text[]) ORDER BY created_at DESC LIMIT 1`, [userId, ids.map((i) => "avatar:" + i)]);
+      const r = await q(`SELECT mime, bytes FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key = ANY($2::text[]) ORDER BY created_at DESC LIMIT 1`, [userId, ids.map((i) => "avatar:" + i)]);
       const x = r.rows[0];
       return x ? { mime: String(x.mime), bytes: x.bytes as Uint8Array } : null;
     },
@@ -213,11 +214,11 @@ export function createIdentity(core: Core, savedPhone: (userId: string) => Promi
       try {
         const c = await core.config(userId);
         if (!c.base || !c.apiKey || !chatIds.length) return false;
-        const fresh = new Set((await q(`SELECT chat_id FROM {{p}}contacts WHERE user_id = $1 AND chat_id = ANY($2::text[]) AND fetched_at > now() - ($3 || ' milliseconds')::interval`, [userId, chatIds, String(CONTACT_TTL_MS)])).rows.map((x) => String(x.chat_id)));
+        const fresh = new Set((await q(`SELECT chat_id FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND chat_id = ANY($2::text[]) AND fetched_at > now() - ($3 || ' milliseconds')::interval`, [userId, chatIds, String(CONTACT_TTL_MS)])).rows.map((x) => String(x.chat_id)));
         const due = chatIds.filter((id) => !fresh.has(id) && id !== "status@broadcast").slice(0, 6);
         let changed = false;
         for (const id of due) {
-          await q(`INSERT INTO {{p}}contacts (user_id, chat_id, fetched_at) VALUES ($1,$2,now()) ON CONFLICT (user_id, chat_id) DO UPDATE SET fetched_at = now()`, [userId, id]);
+          await q(`INSERT INTO {{p}}contacts (user_id, session, chat_id, fetched_at) VALUES ($1,$S,$2,now()) ON CONFLICT (user_id, session, chat_id) DO UPDATE SET fetched_at = now()`, [userId, id]);
           if (isGroup(id)) {
             const g = core.obj(await core.tryWaha(userId, "GET", `/api/{session}/groups/${encodeURIComponent(id)}`));
             const subject = clean(g.subject ?? g.Name ?? g.name ?? core.obj(g.groupMetadata).subject);

@@ -16,17 +16,17 @@ export function registerStatus({ core, identity, store }: Deps): void {
   const R = ctx.routes;
 
   async function purge(userId: string) {
-    const gone = await q(`DELETE FROM {{p}}statuses WHERE user_id = $1 AND sent_at < now() - interval '24 hours' RETURNING stanza`, [userId]);
-    if (gone.rows.length) await q(`DELETE FROM {{p}}media_blobs WHERE user_id = $1 AND key = ANY($2::text[])`, [userId, gone.rows.map((x) => "s:" + String(x.stanza))]);
-    await q(`DELETE FROM {{p}}media_blobs WHERE user_id = $1 AND key LIKE 's:%' AND created_at < now() - interval '25 hours'`, [userId]);
+    const gone = await q(`DELETE FROM {{p}}statuses WHERE user_id = $1 AND session = $S AND sent_at < now() - interval '24 hours' RETURNING stanza`, [userId]);
+    if (gone.rows.length) await q(`DELETE FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key = ANY($2::text[])`, [userId, gone.rows.map((x) => "s:" + String(x.stanza))]);
+    await q(`DELETE FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key LIKE 's:%' AND created_at < now() - interval '25 hours'`, [userId]);
   }
   async function meChat(userId: string) { const me = await identity.me(userId); return me ? identity.canonical(userId, me.id) : ""; }
 
   /** Stores one status. False when it was already there. */
   async function keep(userId: string, s: { stanza: string; msgId: string; poster: string; name: string; mine: boolean; type: string; body: string; bg: string; media: Record<string, unknown> | null; at: Date }) {
     const r = await q(
-      `INSERT INTO {{p}}statuses (user_id, stanza, msg_id, poster, poster_name, mine, type, body, bg, media, sent_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)
-       ON CONFLICT (user_id, stanza) DO NOTHING RETURNING stanza`, [userId, s.stanza, s.msgId, s.poster, s.name, s.mine, s.type, s.body.slice(0, 2000), s.bg, s.media ? JSON.stringify(s.media) : null, s.at.toISOString()]);
+      `INSERT INTO {{p}}statuses (user_id, session, stanza, msg_id, poster, poster_name, mine, type, body, bg, media, sent_at) VALUES ($1,$S,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)
+       ON CONFLICT (user_id, session, stanza) DO NOTHING RETURNING stanza`, [userId, s.stanza, s.msgId, s.poster, s.name, s.mine, s.type, s.body.slice(0, 2000), s.bg, s.media ? JSON.stringify(s.media) : null, s.at.toISOString()]);
     await purge(userId);
     return r.rows.length > 0;
   }
@@ -59,8 +59,8 @@ export function registerStatus({ core, identity, store }: Deps): void {
   R.get("/status/list", async ({ userId }) => {
     await core.owner(userId);
     await purge(userId);
-    const rows = (await q(`SELECT stanza, poster, poster_name, mine, type, body, bg, media, sent_at FROM {{p}}statuses WHERE user_id = $1 ORDER BY sent_at ASC`, [userId])).rows;
-    const blobs = new Set((await q(`SELECT key FROM {{p}}media_blobs WHERE user_id = $1 AND key LIKE 's:%'`, [userId])).rows.map((x) => String(x.key)));
+    const rows = (await q(`SELECT stanza, poster, poster_name, mine, type, body, bg, media, sent_at FROM {{p}}statuses WHERE user_id = $1 AND session = $S ORDER BY sent_at ASC`, [userId])).rows;
+    const blobs = new Set((await q(`SELECT key FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key LIKE 's:%'`, [userId])).rows.map((x) => String(x.key)));
     const me = await meChat(userId);
     const people = await peopleOf(core, userId, [...new Set(rows.map((x) => String(x.poster)))]);
     const groups = new Map<string, { poster: { chatId: string; name: string; phone: string | null; avatar: number | null; isMe: boolean }; items: Record<string, unknown>[]; last: number }>();
@@ -84,7 +84,7 @@ export function registerStatus({ core, identity, store }: Deps): void {
     await core.owner(userId);
     const id = typeof query?.id === "string" ? query.id : "";
     if (!/^[\w.-]{1,200}$/.test(id)) throw ctx.httpError(400, "invalid_id", "id is invalid");
-    const r = (await q(`SELECT mime, bytes FROM {{p}}media_blobs WHERE user_id = $1 AND key = $2`, [userId, "s:" + id])).rows[0];
+    const r = (await q(`SELECT mime, bytes FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key = $2`, [userId, "s:" + id])).rows[0];
     if (!r) throw ctx.httpError(404, "media_gone", "This status file is no longer available.");
     return { mime: String(r.mime), data: Buffer.from(r.bytes as Uint8Array).toString("base64") };
   });
@@ -141,12 +141,12 @@ export function registerStatus({ core, identity, store }: Deps): void {
     await core.owner(userId);
     const id = String(core.obj(body).id ?? "");
     if (!/^[\w.-]{1,200}$/.test(id)) throw ctx.httpError(400, "invalid_id", "id is invalid");
-    const row = (await q(`SELECT msg_id, mine FROM {{p}}statuses WHERE user_id = $1 AND stanza = $2`, [userId, id])).rows[0];
+    const row = (await q(`SELECT msg_id, mine FROM {{p}}statuses WHERE user_id = $1 AND session = $S AND stanza = $2`, [userId, id])).rows[0];
     if (!row) throw ctx.httpError(404, "not_found", "That status is gone already.");
     if (row.mine !== true) throw ctx.httpError(400, "not_mine", "You can only delete your own status.");
     await core.guard(() => core.waha(userId, "POST", "/api/{session}/status/delete", { body: { id } }), "status delete");
-    await q(`DELETE FROM {{p}}statuses WHERE user_id = $1 AND stanza = $2`, [userId, id]);
-    await q(`DELETE FROM {{p}}media_blobs WHERE user_id = $1 AND key = $2`, [userId, "s:" + id]);
+    await q(`DELETE FROM {{p}}statuses WHERE user_id = $1 AND session = $S AND stanza = $2`, [userId, id]);
+    await q(`DELETE FROM {{p}}media_blobs WHERE user_id = $1 AND session = $S AND key = $2`, [userId, "s:" + id]);
     return done(userId);
   });
 }

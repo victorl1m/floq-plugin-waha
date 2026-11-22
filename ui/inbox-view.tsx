@@ -21,9 +21,13 @@ import { SessionScreen, useSessionInfo } from "./session-screen";
 import { IconArrowLeft } from "./icons";
 import { subtitle } from "../shared/chat";
 import { kindOfFile, mentionsIn, type Attachment } from "./composer";
-import { WaContext, errorCode, errorStatus, errorText, type Api, type Wa } from "./context";
+import { WaContext, accountName, errorCode, errorStatus, errorText, scopedApi, type Account, type Api, type Wa } from "./context";
+import { AccountsContext, AddAccountDialog, accountHue, useAccountList, type Accounts } from "./accounts";
+import { IconUserPlus } from "./icons-people";
+import type { CSSProperties } from "react";
 import { Conversation, EmptyConversation, type ConversationHandlers } from "./conversation";
 import { CSS } from "./styles";
+import { SESSION_CSS } from "./styles-session";
 
 interface Status { configured: boolean; missingSettings: string[]; missingSecrets: string[]; session: string; engine?: Engine; features?: Features; me?: { name: string; phone: string | null } | null }
 type Phase = { kind: "loading" } | { kind: "error"; message: string } | { kind: "forbidden" } | { kind: "ready"; status: Status };
@@ -50,6 +54,10 @@ function SessionGate({ hasChats, open, onClose, onConnected, children }: { hasCh
   return <>{children}</>;
 }
 const visible = () => typeof document === "undefined" || document.visibilityState === "visible";
+/** A plugin event of one account (the inbox itself is above the context its children read). */
+function useWaEventHere<T>(pluginId: string, session: string, name: string, fn: (data: T) => void) {
+  usePluginEvent<T>(pluginId, name, (data) => { const s = (data as { session?: unknown } | null)?.session; if (typeof s === "string" && s !== session) return; fn(data); });
+}
 const toBase64 = (blob: Blob) => new Promise<string>((resolve, reject) => {
   const r = new FileReader();
   r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ""));
@@ -63,10 +71,56 @@ function explain(e: unknown): string {
   return errorText(e);
 }
 
-/** The WhatsApp inbox: chat list, conversation and its side panels. Everything sent here is the user's own click. */
-export default function InboxView({ plugin }: PluginViewProps) {
-  const api = usePluginApi(plugin.id) as Api;
+/**
+ * The WhatsApp view: which accounts are attached and which one is on screen. Each account gets its own inbox (mounted per account, so nothing of
+ * one account is ever shown or sent in another), with a route caller that names the account's session on every request.
+ */
+export default function InboxView({ plugin, view }: PluginViewProps) {
+  const base = usePluginApi(plugin.id) as Api;
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
+  const [adding, setAdding] = useState(false);
+  const loadStatus = useCallback(async () => {
+    setPhase({ kind: "loading" });
+    try { setPhase({ kind: "ready", status: await base<Status>("/status") }); }
+    catch (e) { setPhase(errorStatus(e) === 403 ? { kind: "forbidden" } : { kind: "error", message: errorText(e) }); }
+  }, [base]);
+  useEffect(() => { void loadStatus(); }, [loadStatus]);
+  const configured = phase.kind === "ready" && phase.status.configured;
+  const { list, error, active, switchTo, refresh } = useAccountList(plugin.id, base, configured);
+  const accounts = useMemo<Accounts>(() => ({ list: list ?? [], active, switchTo, refresh, add: () => setAdding(true) }), [list, active, switchTo, refresh]);
+  const api = useMemo(() => scopedApi(base, active), [base, active]);
+
+  if (phase.kind === "loading" || (configured && list === null && !error)) return <PluginPage title="WhatsApp"><PluginState state="loading" label="WhatsApp" /></PluginPage>;
+  if (phase.kind === "error") return <PluginPage title="WhatsApp"><PluginState state="error" title="Could not load WhatsApp" description={phase.message} onRetry={() => void loadStatus()} /></PluginPage>;
+  if (phase.kind === "forbidden") return <PluginPage title="WhatsApp"><PluginState state="empty" title="Only the administrator who set this up can use the inbox" description="Messages are private to them." /></PluginPage>;
+  if (!phase.status.configured) {
+    return <PluginPage title="WhatsApp"><PluginState state="not-configured" title="Connect WAHA" description="Add your WAHA address and API key, then point a WAHA webhook at Floq." missingSecrets={phase.status.missingSecrets} missingSettings={phase.status.missingSettings} /></PluginPage>;
+  }
+  if (list === null) return <PluginPage title="WhatsApp"><PluginState state="error" title="Could not load your WhatsApp accounts" description={error} onRetry={() => void refresh()} /></PluginPage>;
+  const added = async (session: string) => { await refresh(); switchTo(session); };
+  return (
+    <AccountsContext.Provider value={accounts}>
+      {active ? <AccountInbox key={active} plugin={plugin} view={view} api={api} session={active} status={phase.status} account={list.find((a) => a.session === active) ?? null} many={list.length > 1} /> : (
+        <div className="wa-root">
+          <style>{CSS + SESSION_CSS}</style>
+          <div className="wa-noacct">
+            <div className="wa-hello">
+              <span className="wa-hero"><IconUserPlus /></span>
+              <span className="wa-hero-title">No WhatsApp account yet</span>
+              <p>Link a phone with a QR code, or attach a session that already runs in your WAHA. You can add as many accounts as you like.</p>
+              <Button type="button" onClick={() => setAdding(true)}><IconUserPlus />Add account</Button>
+            </div>
+          </div>
+        </div>
+      )}
+      <AddAccountDialog open={adding} onOpenChange={setAdding} api={base} pluginId={plugin.id} onAdded={added} />
+    </AccountsContext.Provider>
+  );
+}
+
+/** The inbox of one account: chat list, conversation and its side panels. Everything sent here is the user's own click, from this account. */
+function AccountInbox({ plugin, api, session, status: first, account, many }: PluginViewProps & { api: Api; session: string; status: Status; account: Account | null; many: boolean }) {
+  const [phase, setPhase] = useState<Phase>({ kind: "ready", status: first });
   const [chats, setChats] = useState<Chat[] | null>(null);
   const [archived, setArchived] = useState<Chat[]>([]);
   const [archivedCount, setArchivedCount] = useState(0);
@@ -105,7 +159,6 @@ export default function InboxView({ plugin }: PluginViewProps) {
   const loadingMore = useRef(false);
 
   const loadStatus = useCallback(async () => {
-    setPhase({ kind: "loading" });
     try { const status = await api<Status>("/status"); setPhase({ kind: "ready", status }); if (status.me) setMe(status.me); }
     catch (e) { setPhase(errorStatus(e) === 403 ? { kind: "forbidden" } : { kind: "error", message: errorText(e) }); }
   }, [api]);
@@ -163,7 +216,8 @@ export default function InboxView({ plugin }: PluginViewProps) {
     try { await api("/read", { method: "POST", body: { chatId } }); } catch { /* the pill returns with the next refresh */ }
   }, [api]);
 
-  useEffect(() => { void loadStatus(); }, [loadStatus]);
+  // The shell's status was read for the default account: this account's engine and features come from its own.
+  useEffect(() => { if (first.session !== session) void loadStatus(); else if (first.me) setMe(first.me); }, [loadStatus]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (phase.kind === "ready" && phase.status.configured) void loadChats(); }, [phase, loadChats]);
   useEffect(() => {
     if (!selected) return;
@@ -181,14 +235,14 @@ export default function InboxView({ plugin }: PluginViewProps) {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [markRead]);
 
-  usePluginEvent<{ chatId?: string; fromMe?: boolean; sync?: boolean }>(plugin.id, "message", (data) => {
+  useWaEventHere<{ chatId?: string; fromMe?: boolean; sync?: boolean }>(plugin.id, session, "message", (data) => {
     if (data?.chatId && data.chatId === selectedRef.current) {
       void loadMessages(data.chatId);
       if (visible() && data.fromMe === false) { void markRead(data.chatId).then(() => loadChats()); return; }
     }
     void loadChats();
   });
-  usePluginEvent(plugin.id, "chats", () => { void loadChats(); });
+  useWaEventHere(plugin.id, session, "chats", () => { void loadChats(); });
 
   const openChat = useCallback((chatId: string, hint?: Partial<Chat>) => {
     if (hint) setHints((h) => ({ ...h, [chatId]: { ...h[chatId], ...hint } }));
@@ -200,7 +254,7 @@ export default function InboxView({ plugin }: PluginViewProps) {
   const engine: Engine = status?.engine ?? "";
   const features = useMemo(() => status?.features ?? featuresOf(engine), [status, engine]);
   const everyChat = useMemo(() => [...(chats ?? []), ...archived.filter((a) => !(chats ?? []).some((c) => c.chatId === a.chatId))], [chats, archived]);
-  const wa = useMemo<Wa>(() => ({ pluginId: plugin.id, api, engine, features, me, chats: everyChat, refreshChats: () => void loadChats(), openChat, useAvatar: useAvatarUrl }), [plugin.id, api, engine, features, me, everyChat, loadChats, openChat]);
+  const wa = useMemo<Wa>(() => ({ pluginId: plugin.id, api, session, engine, features, me, chats: everyChat, refreshChats: () => void loadChats(), openChat, useAvatar: useAvatarUrl }), [plugin.id, api, session, engine, features, me, everyChat, loadChats, openChat]);
 
   /** Adds an optimistic bubble, runs the request, then swaps in what the runtime stored. Returns false when it failed. */
   async function deliver(chatId: string, optimistic: Omit<Message, "id" | "fromMe" | "sender" | "sentAt" | "pending">, run: () => Promise<unknown>, failTitle: string): Promise<boolean> {
@@ -347,9 +401,9 @@ export default function InboxView({ plugin }: PluginViewProps) {
           {chat ? (
             <Conversation chat={chat} messages={shown} hasMore={hasMore} error={messagesError} now={now} draft={drafts[selected] ?? ""} sending={sendingId === selected} focusToken={`${selected}:${focusN}`}
               reply={replies[selected] ?? null} editing={editing} handlers={handlers}
-              onInfo={() => setInfo((v) => !v)} menu={<>{features.labels && chat.kind !== "group" && <LabelPicker chat={chat} />}<ChatMenu chat={chat} onInfo={() => setInfo(true)} onGone={closeChat} /></>}
+              onInfo={() => setInfo((v) => !v)} menu={<>{many && account && <span className="wa-chip-acct" title={`This chat belongs to ${accountName(account)}. Replies go out from that account.`} aria-label={`Account: ${accountName(account)}`}><i style={{ "--wa-h": accountHue(account) } as CSSProperties} aria-hidden="true" /><span>{accountName(account)}</span></span>}{features.labels && chat.kind !== "group" && <LabelPicker chat={chat} />}<ChatMenu chat={chat} onInfo={() => setInfo(true)} onGone={closeChat} /></>}
               presence={features.presence && !chat.isSelf ? <PresenceLine chat={chat} fallback={subtitle(chat)} /> : undefined} />
-          ) : <EmptyConversation session={phase.status.session} />}
+          ) : <EmptyConversation session={session} account={many && account ? accountName(account) : ""} />}
           {chat && info && <InfoPanel key={chat.chatId} chat={chat} onClose={() => setInfo(false)} />}
         </div>
         </SessionGate>

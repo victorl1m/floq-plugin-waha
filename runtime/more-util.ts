@@ -18,8 +18,8 @@ export async function peopleOf(core: Core, userId: string, ids: string[]): Promi
   const r = await core.ctx.db.query(
     `SELECT COALESCE(lm.pn, k.chat_id) AS cid, MAX(NULLIF(k.name, '')) AS name, MAX(NULLIF(k.push_name, '')) AS push, MAX(NULLIF(k.phone, '')) AS phone,
             BOOL_OR(k.has_picture) AS has_picture, MAX(k.picture_at) AS picture_at
-       FROM {{p}}contacts k LEFT JOIN {{p}}lid_map lm ON lm.user_id = k.user_id AND lm.lid = k.chat_id
-      WHERE k.user_id = $1 AND COALESCE(lm.pn, k.chat_id) = ANY($2::text[]) GROUP BY 1`, [userId, ids]);
+       FROM {{p}}contacts k LEFT JOIN {{p}}lid_map lm ON lm.user_id = k.user_id AND lm.session = k.session AND lm.lid = k.chat_id
+      WHERE k.user_id = $1 AND k.session = $S AND COALESCE(lm.pn, k.chat_id) = ANY($2::text[]) GROUP BY 1`, [userId, ids]);
   for (const x of r.rows) {
     const name = String(x.name ?? x.push ?? "");
     out.set(String(x.cid), { name: name.includes("@") ? "" : name, phone: String(x.phone ?? ""), avatar: x.has_picture === true && x.picture_at ? new Date(x.picture_at as string).getTime() : null });

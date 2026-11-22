@@ -21,6 +21,18 @@ One person is one chat, even when WhatsApp addresses them by phone (`...@c.us`),
 
 Messages carry `type` (chat, image, video, audio, ptt = voice note, document, sticker, location, vcard, poll, call), `ack` (1 sent, 2 delivered, 3 read), `reactions`, `replyTo`, and for files `media` (mime, filename, size, duration). `media-info` describes a file; you cannot download it.
 
+## Several accounts
+
+The user can attach more than one WhatsApp account (one WAHA session each). `floq plugin call waha me` lists them under `accounts`: `session`, `name`, `phone`, `label` and which one is `primary`. Every call takes an optional `"session"`; without it the primary account is used. Chats, message ids and contacts belong to one account: read and answer a chat with the same `session` you found it in.
+
+```bash
+floq plugin call waha chats --json '{"session":"lucy"}'
+floq plugin call waha messages --json '{"session":"lucy","chatId":"5511999999999@c.us"}'
+floq plugin call waha send --json '{"session":"lucy","chatId":"5511999999999@c.us","text":"Hello!"}'
+```
+
+A 404 `unknown_account` means that session is not attached: call `me` again. With more than one account the approval the user sees names the account the message leaves from.
+
 ## Message the user (free)
 
 Use this for updates, results, and questions you want them to see on their phone. Write normal, clear sentences: the text goes to their number exactly as you write it. No approval, no codes.
@@ -30,7 +42,7 @@ floq plugin call waha message-me --json '{"text":"The build finished and all tes
 floq plugin call waha send-media-me --json '{"kind":"document","mime":"application/pdf","filename":"report.pdf","data":"<base64>","caption":"The report"}'
 ```
 
-Returns `{"status":"sent"}`. Text up to 4096 characters; files up to 5 MB (`kind`: image, video, audio, voice, document). It only ever goes to the user's own saved number. A 409 means no number is saved or the user turned it off: do not retry, tell them in Floq. `floq plugin call waha me` shows `canMessageMe`.
+Returns `{"status":"sent"}`. Text up to 4096 characters; files up to 5 MB (`kind`: image, video, audio, voice, document). It only ever goes to the user's own saved number (one number for the whole inbox; `"session"` picks the account it is sent from). A 409 means no number is saved or the user turned it off: do not retry, tell them in Floq. `floq plugin call waha me` shows `canMessageMe`.
 
 ## Message other people (needs approval)
 

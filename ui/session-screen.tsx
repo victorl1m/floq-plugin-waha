@@ -1,7 +1,8 @@
 // The connection screen: shown instead of the inbox while WhatsApp is not linked. QR or pairing-code login, start/restart, and the shared live session state.
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Button, toast, usePluginEvent } from "@/plugins/kit";
-import { errorCode, errorText, useWa, type Api } from "./context";
+import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { AccountsContext } from "./accounts-context";
+import { Button, toast } from "@/plugins/kit";
+import { errorCode, errorText, useWa, useWaEvent, type Api } from "./context";
 import { IconLock, IconRefresh, Spinner } from "./icons";
 import { IconAlertCircle, IconCheckCircle, IconKey, IconQr, IconServerOff, IconSmartphone } from "./icons-session";
 import { qrMatrix, qrPath } from "./qr";
@@ -20,7 +21,7 @@ const visible = () => typeof document === "undefined" || document.visibilityStat
 /** Poll period of the session state: quick while the user is waiting for a connection, slow while it just works. */
 const POLL_WAITING_MS = 3000, POLL_WORKING_MS = 20_000, QR_REFRESH_MS = 15_000;
 
-// One poller per plugin, shared by the screen, the reconnect bar and the account menu.
+// One poller per account, shared by the screen, the reconnect bar and the account menu.
 interface Store { api: Api; info: SessionInfo | null; error: string; subs: Set<() => void>; timer: ReturnType<typeof setTimeout> | null; inflight: Promise<void> | null }
 const stores = new Map<string, Store>();
 const emit = (s: Store) => s.subs.forEach((f) => f());
@@ -41,9 +42,10 @@ function schedule(s: Store) {
 
 /** The live session state (GET /session), refreshed on every "session" event, on tab focus and by polling. */
 export function useSessionInfo(): { info: SessionInfo | null; error: string; refresh: () => Promise<void> } {
-  const { pluginId, api } = useWa();
-  let s = stores.get(pluginId);
-  if (!s) stores.set(pluginId, (s = { api, info: null, error: "", subs: new Set(), timer: null, inflight: null }));
+  const { pluginId, api, session } = useWa();
+  const key = pluginId + "\n" + (session ?? "");
+  let s = stores.get(key);
+  if (!s) stores.set(key, (s = { api, info: null, error: "", subs: new Set(), timer: null, inflight: null }));
   s.api = api;
   const store = s;
   const [, bump] = useReducer((n: number) => n + 1, 0);
@@ -54,7 +56,7 @@ export function useSessionInfo(): { info: SessionInfo | null; error: string; ref
     document.addEventListener("visibilitychange", onVisible);
     return () => { document.removeEventListener("visibilitychange", onVisible); store.subs.delete(bump); if (!store.subs.size && store.timer) { clearTimeout(store.timer); store.timer = null; } };
   }, [store]);
-  usePluginEvent<{ status?: string }>(pluginId, "session", (d) => {
+  useWaEvent<{ status?: string }>("session", (d) => {
     if (typeof d?.status === "string" && store.info) { store.info = { ...store.info, status: d.status as SessionStatus }; emit(store); }
     void refresh(store).then(() => schedule(store));
   });
@@ -76,8 +78,8 @@ export function QrCode({ value }: { value: string }) {
 }
 
 /** Fetches the QR on mount, on every SCAN_QR_CODE event and every 15 s while the tab is visible. */
-function QrPanel() {
-  const { api, pluginId } = useWa();
+export function QrPanel() {
+  const { api } = useWa();
   const [qr, setQr] = useState<{ value?: string; image?: string } | null>(null);
   const [error, setError] = useState("");
   const seq = useRef(0);
@@ -96,7 +98,7 @@ function QrPanel() {
     const t = setInterval(() => { if (visible()) void load(); }, QR_REFRESH_MS);
     return () => { clearInterval(t); seq.current++; };
   }, [load]);
-  usePluginEvent<{ status?: string }>(pluginId, "session", (d) => { if (d?.status === "SCAN_QR_CODE") void load(); });
+  useWaEvent<{ status?: string }>("session", (d) => { if (d?.status === "SCAN_QR_CODE") void load(); });
   return (
     <>
       <div className="wa-qr-box" aria-busy={!qr}>
@@ -108,7 +110,7 @@ function QrPanel() {
   );
 }
 
-function PairForm({ onBack }: { onBack: () => void }) {
+export function PairForm({ onBack }: { onBack: () => void }) {
   const { api } = useWa();
   const [phone, setPhone] = useState("");
   const touched = useRef(false);
@@ -165,6 +167,7 @@ const SESSION_LABEL: Record<string, string> = { WORKING: "Connected", SCAN_QR_CO
 /** No session with the configured name: attach one that already exists in WAHA, or create one (then the QR appears). */
 function PickSession({ onDone }: { onDone: () => Promise<void> }) {
   const { api } = useWa();
+  const accounts = useContext(AccountsContext);
   const [list, setList] = useState<{ current: string; sessions: WahaSession[]; known: boolean } | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState("");
@@ -180,9 +183,9 @@ function PickSession({ onDone }: { onDone: () => Promise<void> }) {
   async function use(n: string, create: boolean) {
     setBusy(n); setError("");
     try {
-      await api("/session/use", { method: "POST", body: { name: n } });
-      if (create) await api("/session/start", { method: "POST" });
-      await onDone();
+      await api("/session/use", { method: "POST", body: { name: n, start: create } });
+      // The account now has another session name: the inbox follows it (or, in a single-session screen, just reads the state again).
+      if (accounts) { await accounts.refresh(); accounts.switchTo(n); } else await onDone();
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(""); }
   }

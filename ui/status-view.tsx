@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Tooltip, TooltipContent, TooltipTrigger, cn, toast, usePluginEvent } from "@/plugins/kit";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Tooltip, TooltipContent, TooltipTrigger, cn, toast } from "@/plugins/kit";
 import { displayName, fullDate, relativeTime, timeOf } from "../shared/chat";
 import { Avatar } from "./avatar";
-import { errorCode, errorStatus, useWa } from "./context";
+import { errorCode, errorStatus, useWa, useWaEvent } from "./context";
 import { IconArrowLeft, IconRefresh, IconX, Spinner, IconAlert } from "./icons";
 import { IconChevronLeft, IconChevronRight, IconImageSmall, IconPlusSmall, IconStatus, IconTextT, IconTrashSmall } from "./icons-more";
 
@@ -223,7 +223,7 @@ export function StatusView({ onClose }: { onClose?: () => void }) {
   }, [api]);
   useEffect(() => { if (features.status) void load(); }, [load, features.status]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(t); }, []);
-  usePluginEvent(pluginId, "status", () => void load());
+  useWaEvent("status", () => void load());
   const markSeen = useCallback((id: string) => setSeen((s) => { if (s.has(id)) return s; const n = new Set(s); n.add(id); saveSeen(n); return n; }), []);
   const del = async (id: string) => {
     try { await api("/status/delete", { method: "POST", body: { id } }); await load(); toast.success("Status deleted"); }

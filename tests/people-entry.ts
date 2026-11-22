@@ -22,7 +22,7 @@ export default {
     registerChats(deps); registerContacts(deps); registerGroups(deps);
     ctx.webhooks.on("events", async (req: { json(): unknown }) => {
       const e = parseEnvelope(req.json());
-      const o = await ctx.installOwner();
+      const owner = await ctx.installOwner(), o = owner && e ? await core.scope(owner, e.session) : null;
       if (e && o) { if (Object.keys(e.me).length) await identity.saveMe(o, e.me); await core.emit(o, e); }
       return { ok: true };
     });

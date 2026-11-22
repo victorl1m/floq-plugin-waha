@@ -99,7 +99,8 @@ test("GET /messages includes senderName", async () => {
   const h = harness(() => [{ msg_id: "a", from_me: false, sender: "x@c.us", sender_name: "Maria", body: "hi", has_media: false, sent_at: "2026-01-02T03:04:05Z" }]);
   const { messages } = await h.routes["GET /messages"]({ userId: "u1", query: { chatId: "x@c.us" } });
   assert.equal(messages[0].senderName, "Maria"); assert.equal(messages[0].id, "a");
-  assert.deepEqual(h.queries[0].params.slice(0, 2), ["u1", "x@c.us"]);
+  const lid = h.queries.find((q) => /lid_map/.test(q.sql));
+  assert.deepEqual(lid.params, ["u1", "x@c.us", "default"]); // the owner, the chat, and the account's session last
   await assert.rejects(h.routes["GET /messages"]({ userId: "u1", query: { chatId: "bad id" } }), { status: 400 });
 });
 
@@ -107,7 +108,7 @@ test("POST /read validates, is owner-only and writes for the right user and chat
   const h = harness();
   assert.deepEqual(await h.routes["POST /read"]({ userId: "u1", body: { chatId: "5511999999999@c.us" } }), { ok: true });
   const reads = () => h.queries.filter((q) => /chat_reads/.test(q.sql));
-  assert.equal(reads().length, 1); assert.deepEqual(reads()[0].params, ["u1", "5511999999999@c.us"]);
+  assert.equal(reads().length, 1); assert.deepEqual(reads()[0].params, ["u1", "5511999999999@c.us", "default"]);
   await assert.rejects(h.routes["POST /read"]({ userId: "u1", body: { chatId: "bad id!" } }), { status: 400 });
   await assert.rejects(h.routes["POST /read"]({ userId: "u1", body: {} }), { status: 400 });
   await assert.rejects(h.routes["POST /read"]({ userId: "u2", body: { chatId: "5511999999999@c.us" } }), { status: 403 });

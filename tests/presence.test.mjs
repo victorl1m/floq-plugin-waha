@@ -51,12 +51,12 @@ test("presence.update is pushed to the UI with the canonical chat id; a group up
   await h.db.query("INSERT INTO lid_map (user_id, lid, pn) VALUES ('u1', $1, $2)", [LID, PN]);
   await h.get("/presence", { chatId: PN });
   await h.event("presence.update", { id: LID, presences: [{ participant: LID, lastKnownPresence: "typing", lastSeen: null }] });
-  assert.deepEqual(h.events.find((e) => e.name === "presence"), { name: "presence", chatId: PN, state: "typing", lastSeen: null });
+  assert.deepEqual(h.events.find((e) => e.name === "presence"), { name: "presence", session: "default", chatId: PN, state: "typing", lastSeen: null });
   await h.get("/presence", { chatId: PN });
   assert.equal(h.reqs.filter((r) => r.path.endsWith(encodeURIComponent(PN))).length, 2, "an update invalidates the cached answer");
   h.events.length = 0;
   await h.event("presence.update", { id: GROUP, presences: [{ participant: P1, lastKnownPresence: "recording", lastSeen: null }] });
-  assert.deepEqual(h.events, [{ name: "presence", chatId: GROUP, state: "recording", lastSeen: null, participant: P1 }]);
+  assert.deepEqual(h.events, [{ name: "presence", session: "default", chatId: GROUP, state: "recording", lastSeen: null, participant: P1 }]);
   await h.event("presence.update", { id: "", presences: [] });
 });
 

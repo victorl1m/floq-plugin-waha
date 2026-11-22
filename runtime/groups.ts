@@ -68,9 +68,9 @@ export function registerGroups({ core, identity, store }: Deps): void {
     }
     const unique = [...new Map(picked.map((p) => [p.id, p])).values()];
     const ids = unique.map((p) => p.id);
-    const aliases = (await q(`SELECT lid, pn FROM {{p}}lid_map WHERE user_id = $1 AND pn = ANY($2::text[])`, [userId, ids])).rows;
+    const aliases = (await q(`SELECT lid, pn FROM {{p}}lid_map WHERE user_id = $1 AND session = $S AND pn = ANY($2::text[])`, [userId, ids])).rows;
     const names = new Map<string, { name: string; phone: string }>();
-    for (const r of (await q(`SELECT chat_id, name, push_name, phone FROM {{p}}contacts WHERE user_id = $1 AND chat_id = ANY($2::text[])`, [userId, [...ids, ...aliases.map((a) => String(a.lid))]])).rows) {
+    for (const r of (await q(`SELECT chat_id, name, push_name, phone FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND chat_id = ANY($2::text[])`, [userId, [...ids, ...aliases.map((a) => String(a.lid))]])).rows) {
       const owner = String(aliases.find((a) => a.lid === r.chat_id)?.pn ?? r.chat_id), cur = names.get(owner);
       names.set(owner, { name: cur?.name || String(r.name || r.push_name || ""), phone: cur?.phone || String(r.phone ?? "") });
     }
@@ -95,7 +95,7 @@ export function registerGroups({ core, identity, store }: Deps): void {
     const announce = bool(g.announce, g.IsAnnounce, meta.announce) ?? (bool(g.membersCanSendMessages) === false);
     const restrict = bool(g.restrict, g.IsLocked, meta.restrict) ?? false;
     if (subject) await identity.upsertContact(userId, id, { name: subject });
-    const pic = (await q(`SELECT has_picture, picture_at FROM {{p}}contacts WHERE user_id = $1 AND chat_id = $2`, [userId, id])).rows[0];
+    const pic = (await q(`SELECT has_picture, picture_at FROM {{p}}contacts WHERE user_id = $1 AND session = $S AND chat_id = $2`, [userId, id])).rows[0];
     const out: Info = {
       chatId: id, subject, description: str(g.description ?? g.desc ?? g.Topic ?? g.topic ?? meta.desc, 2048), owner: owner ? await identity.canonical(userId, owner) : null,
       createdAt: when(g.creation ?? g.GroupCreated ?? g.createdAt ?? g.timestamp ?? meta.creation), size: participants.length, participants,

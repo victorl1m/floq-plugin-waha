@@ -48,7 +48,7 @@ export async function harness({ waha, owner = "u1" } = {}) {
     },
     fetch: async () => ({ ok: false, status: 404, bytes: new Uint8Array(), headers: {} }),
     db: { query: async (sql, params) => { const r = await db.query(sql.replaceAll("{{p}}", ""), params); return { rows: r.rows, rowCount: r.rows.length || r.affectedRows || 0 }; } },
-    events: { publish: (_u, name, data) => events.push({ name, ...data }) }, toast: (_u, t) => toasts.push(t), log: { warn() {}, info() {}, debug() {}, error() {} },
+    events: { publish: (_u, name, data) => events.push({ name, ...data }) }, toast: (_u, t) => toasts.push(t), log: { warn(...a) { if (process.env.WAHA_TEST_LOG) console.log("WARN", ...a); }, info() {}, debug() {}, error(...a) { if (process.env.WAHA_TEST_LOG) console.log("ERROR", ...a); } },
     approvals: { request: async () => "approved" },
     routes: { get: (p, h) => (routes["GET " + p] = h), post: (p, h) => (routes["POST " + p] = h) },
     internalRoutes: { call() {} },
